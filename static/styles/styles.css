@@ -34,6 +34,7 @@
   --color-success-soft: #e4f1e5;
   --color-focus: #a8431f;
   --media-blend: multiply;
+  --media-filter: none;
 
   /* type */
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
@@ -107,6 +108,7 @@
     --color-success-soft: #1c3020;
     --color-focus: #f5b393;
     --media-blend: normal;
+    --media-filter: brightness(0.9);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
     --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
     --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
@@ -137,6 +139,7 @@
   --color-success-soft: #1c3020;
   --color-focus: #f5b393;
   --media-blend: normal;
+  --media-filter: brightness(0.9);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
   --shadow-md: 0 4px 12px rgb(0 0 0 / 0.45);
   --shadow-lg: 0 12px 32px rgb(0 0 0 / 0.5);
@@ -192,7 +195,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 :focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
 }
 
 .visually-hidden {
@@ -271,6 +273,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn-secondary:hover { background: var(--color-surface-2); color: var(--color-text); }
 
 .btn-block { width: 100%; }
+
+.btn-sm { min-height: 40px; padding: var(--space-1) var(--space-4); font-size: var(--text-sm); }
 
 .icon-btn {
   position: relative;
@@ -427,7 +431,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 @media (max-width: 559px) {
-  .header-inner { flex-wrap: wrap; row-gap: 0; }
+  .header-inner { flex-wrap: wrap; row-gap: 0; min-height: 0; padding-top: var(--space-2); }
   .site-nav { order: 3; width: 100%; margin: 0; border-top: 1px solid var(--color-border); }
   .site-nav ul { overflow-x: auto; scrollbar-width: none; }
   .site-nav a { min-height: 40px; padding: 0 var(--space-2); }
@@ -566,6 +570,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   height: 100%;
   object-fit: cover;
   mix-blend-mode: var(--media-blend);
+  filter: var(--media-filter);
 }
 
 /* ------------------------------------------------------------ product page */

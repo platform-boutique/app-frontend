@@ -46,8 +46,16 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 ├── internal/validator/  # form payload validation (go-playground/validator) + tests
 ├── money/               # Money arithmetic helpers + tests
 ├── genproto/            # generated gRPC stubs for all backend services (demo.pb.go, demo_grpc.pb.go)
-├── templates/           # home, product, cart, order, error, header/footer, ad, recommendations, assistant
-├── static/              # styles, icons, images, product photos
+├── templates/
+│   ├── header.html, footer.html  # page shell: theme script, header (brand, nav, currency, theme toggle, cart), footer
+│   ├── home.html, product.html, cart.html, order.html, error.html  # pages
+│   ├── ad.html, recommendations.html  # shared blocks
+│   ├── icons.html       # inline SVG brand mark and icons (no image files)
+│   └── catalog.html     # empty extension points: nav_extra, catalog_toolbar, catalog_pagination
+├── static/
+│   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css
+│   ├── favicon.svg
+│   └── img/products/    # product photos
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
 ├── .github/workflows/   # ci.yaml (pull requests), release.yaml (v* tags / manual) - callers of platform-demo-workflows
 ├── Dockerfile

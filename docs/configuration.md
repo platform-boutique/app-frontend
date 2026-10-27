@@ -13,9 +13,9 @@
 | `LISTEN_ADDR` | No | `` (all interfaces) | Bind address; leave empty in containers |
 | `METRICS_PORT` | No | `9464` | Prometheus listener port |
 | `BASE_URL` | No | `` | URL path prefix when served under a sub-path (e.g. `/shop`); all routes and static URLs move under it |
-| `FRONTEND_MESSAGE` | No | — | Banner text shown on pages |
-| `BANNER_COLOR` | No | — | Banner colour passed to the home template |
-| `CYMBAL_BRANDING` | No | `false` | `true` switches to the Cymbal Shops branding |
+| `BRAND_NAME` | No | `Everly` | Store name shown in the header, footer, page title and home hero (working name; the one place to rename the store) |
+| `BRAND_TAGLINE` | No | `Everyday things, thoughtfully chosen.` | Tagline shown in the page title, the home hero headline and the footer |
+| `FRONTEND_MESSAGE` | No | — | Optional announcement bar text shown above the header on every page |
 | `ENABLE_SINGLE_SHARED_SESSION` | No | `false` | `true` makes every new visitor share one hard-coded session id (cart shared by everyone). Demo/test workaround only |
 | `TEMPLATE_PATH` | No | `templates/*.html` | Glob of HTML templates (relative to `/app`) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs** (scheme required), e.g. `http://alloy.monitoring.svc.cluster.local:4317`. Legacy fallback: `COLLECTOR_SERVICE_ADDR` (`host:port`). Telemetry is on iff an endpoint is set |

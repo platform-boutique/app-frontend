@@ -13,7 +13,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/setCurrency` | POST | Set the display currency cookie (`currency_code`) |
 | `/logout` | GET | Expire all cookies and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product (used by the page scripts) |
-| `/static/*` | GET | CSS, icons, product images (`static/img/products/*.jpg`) |
+| `/static/*` | GET | CSS, favicon, product images (`static/img/products/`) |
 | `/_healthz` | GET | Liveness/readiness (`ok`) |
 | `/robots.txt` | GET | `Disallow: /` |
 

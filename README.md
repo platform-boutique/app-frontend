@@ -33,7 +33,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/setCurrency` | POST | Set the display currency cookie (`currency_code`) |
 | `/logout` | GET | Expire all cookies and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product (used by the page scripts) |
-| `/static/*` | GET | CSS, icons, product images (`static/img/products/*.jpg`) |
+| `/static/*` | GET | CSS, favicon, product images (`static/img/products/`) |
 | `/_healthz` | GET | Liveness/readiness (`ok`) |
 | `/robots.txt` | GET | `Disallow: /` |
 
@@ -72,9 +72,9 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `LISTEN_ADDR` | No | `` (all interfaces) | Bind address; leave empty in containers |
 | `METRICS_PORT` | No | `9464` | Prometheus listener port |
 | `BASE_URL` | No | `` | URL path prefix when served under a sub-path (e.g. `/shop`); all routes and static URLs move under it |
-| `FRONTEND_MESSAGE` | No | — | Banner text shown on pages |
-| `BANNER_COLOR` | No | — | Banner colour passed to the home template |
-| `CYMBAL_BRANDING` | No | `false` | `true` switches to the Cymbal Shops branding |
+| `BRAND_NAME` | No | `Everly` | Store name shown in the header, footer, page title and home hero (working name; the one place to rename the store) |
+| `BRAND_TAGLINE` | No | `Everyday things, thoughtfully chosen.` | Tagline shown in the page title, the home hero headline and the footer |
+| `FRONTEND_MESSAGE` | No | — | Optional announcement bar text shown above the header on every page |
 | `ENABLE_SINGLE_SHARED_SESSION` | No | `false` | `true` makes every new visitor share one hard-coded session id (cart shared by everyone). Demo/test workaround only |
 | `TEMPLATE_PATH` | No | `templates/*.html` | Glob of HTML templates (relative to `/app`) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs** (scheme required), e.g. `http://alloy.monitoring.svc.cluster.local:4317`. Legacy fallback: `COLLECTOR_SERVICE_ADDR` (`host:port`). Telemetry is on iff an endpoint is set |
@@ -93,6 +93,15 @@ Notes:
 - Telemetry is **pushed**, not scraped: traces, metrics and logs share one OTLP/gRPC endpoint (Alloy); profiles go to Pyroscope (via Alloy). `service.instance.id` is the pod hostname, so replicas stay distinct in Mimir.
 - A Prometheus `/metrics` endpoint is still served on `METRICS_PORT` for debugging, but nothing has to scrape it — the same registry is bridged into OTLP, so metric names are unchanged.
 - Logs: the `logrus` logger keeps writing JSON to stdout and additionally mirrors every record over OTLP (with trace ids when a context is attached).
+
+## Look and feel
+
+- **Brand:** one configuration point, `BRAND_NAME` / `BRAND_TAGLINE` (read once at startup in `cmd/server/brand.go`, passed to every template as `brand_name` / `brand_tagline`). The logo is an inline SVG mark (`templates/icons.html`, `static/favicon.svg`); no image files, fonts or CDNs are loaded from anywhere else.
+- **Design system:** `static/styles/styles.css` defines CSS custom properties for colour, type scale, spacing, radius and shadows, then layout and components; `cart.css` and `order.css` hold page-specific rules. System font stacks only (serif headings, sans body).
+- **Light / dark:** follows `prefers-color-scheme`; the header toggle stores an explicit choice in `localStorage` (`theme`), applied by a small inline script in `<head>` before the stylesheets so there is no flash of the wrong theme. Without JavaScript or storage the toggle is hidden or not remembered and the OS setting applies.
+- **Responsive / accessible:** product grid 2 / 3 / 4 columns (phone / tablet / desktop), square photo frames (`aspect-ratio` + `object-fit`) so square webp and older non-square jpgs both fit; skip link, landmarks, visible focus rings, `prefers-reduced-motion` respected.
+- **Extension points:** `templates/catalog.html` defines empty `nav_extra`, `catalog_toolbar` and `catalog_pagination` templates that the home page and header already call, for the search/filter/pagination work.
+- **Checked so far:** templates rendered with sample data by a throwaway preview server and screenshotted with headless Chromium (Playwright) at 360, 390, 430, 768 and 1280 px, light and dark, with no horizontal overflow; the theme toggle and reload persistence were checked the same way. Not yet checked against the running stack, and contrast ratios were calculated by hand, not measured with a tool.
 
 ## Container image
 
@@ -228,8 +237,16 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 ├── internal/validator/  # form payload validation (go-playground/validator) + tests
 ├── money/               # Money arithmetic helpers + tests
 ├── genproto/            # generated gRPC stubs for all backend services (demo.pb.go, demo_grpc.pb.go)
-├── templates/           # home, product, cart, order, error, header/footer, ad, recommendations, assistant
-├── static/              # styles, icons, images, product photos
+├── templates/
+│   ├── header.html, footer.html  # page shell: theme script, header (brand, nav, currency, theme toggle, cart), footer
+│   ├── home.html, product.html, cart.html, order.html, error.html  # pages
+│   ├── ad.html, recommendations.html  # shared blocks
+│   ├── icons.html       # inline SVG brand mark and icons (no image files)
+│   └── catalog.html     # empty extension points: nav_extra, catalog_toolbar, catalog_pagination
+├── static/
+│   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css
+│   ├── favicon.svg
+│   └── img/products/    # product photos
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
 ├── .github/workflows/   # ci.yaml (pull requests), release.yaml (v* tags / manual) - callers of platform-demo-workflows
 ├── Dockerfile
@@ -241,5 +258,4 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 - `Secure` + `SameSite=Strict` cookies break carts over plain HTTP outside `localhost`.
 - Health is static; readiness doesn't reflect backend availability.
 - Debug-level JSON logging is unconditional.
-- `templates/assistant.html` and the header's assistant link exist, but nothing sets the `assistant_enabled` flag and no assistant routes are registered — the AI shopping assistant is dormant.
 - Per-request gRPC calls have no retries; the ad call has a 100 ms deadline, the rest use the request context.
