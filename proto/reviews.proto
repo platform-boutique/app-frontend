@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package hipstershop;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/GoogleCloudPlatform/miscroservices-demo/hipstershop";
+
+// ReviewService stores product reviews and ratings.
+service ReviewService {
+  // ListReviews returns one page of a product's reviews, newest first.
+  rpc ListReviews(ListReviewsRequest) returns (ListReviewsResponse);
+  // AddReview stores a new review; the server sets id and created_at.
+  rpc AddReview(AddReviewRequest) returns (Review);
+  // GetRatingSummary returns average and count for each requested product.
+  rpc GetRatingSummary(GetRatingSummaryRequest) returns (GetRatingSummaryResponse);
+}
+
+message Review {
+  string id = 1;
+  string product_id = 2;
+  string author_name = 3;
+  int32 rating = 4; // 1-5
+  string comment = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+message ListReviewsRequest {
+  string product_id = 1;
+  int32 page = 2;      // 1-based; 0 means 1
+  int32 page_size = 3; // 0 means 10; values above 50 are capped at 50
+}
+
+message ListReviewsResponse {
+  repeated Review reviews = 1;
+  int32 total = 2;           // all reviews of the product, not just this page
+  double average_rating = 3; // over all reviews of the product, 1 decimal; 0 when there are none
+}
+
+message AddReviewRequest {
+  string product_id = 1;
+  string author_name = 2; // 1-80 characters
+  int32 rating = 3;       // 1-5
+  string comment = 4;     // 1-2000 characters
+}
+
+message GetRatingSummaryRequest {
+  repeated string product_ids = 1; // at most 200
+}
+
+message RatingSummary {
+  string product_id = 1;
+  double average = 2; // 1 decimal; 0 when count is 0
+  int32 count = 3;
+}
+
+message GetRatingSummaryResponse {
+  repeated RatingSummary summaries = 1; // one per distinct requested id, in request order
+}
