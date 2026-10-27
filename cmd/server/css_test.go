@@ -37,7 +37,7 @@ func TestControlBorderContrast(t *testing.T) {
 	}
 	token := func(name string) []string {
 		var out []string
-		for _, m := range regexp.MustCompile(`--color-` + name + `:\s*(#[0-9a-fA-F]{6})`).FindAllStringSubmatch(string(css), -1) {
+		for _, m := range regexp.MustCompile(`--color-`+name+`:\s*(#[0-9a-fA-F]{6})`).FindAllStringSubmatch(string(css), -1) {
 			out = append(out, m[1])
 		}
 		return out
