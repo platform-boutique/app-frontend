@@ -69,6 +69,8 @@ type frontendServer struct {
 	reviewSvcAddr string
 	reviewSvcConn *grpc.ClientConn
 	reviews       pb.ReviewServiceClient
+
+	nav navCache
 }
 
 func main() {

@@ -4,18 +4,22 @@
     <div class="container error-page">
         <div class="notice">
             <div class="notice-icon is-danger">{{ template "icon_alert" . }}</div>
-            <h1>Something went wrong</h1>
-            <p class="muted">We could not complete your request. Please try again in a moment.</p>
-            <p><strong>HTTP status:</strong> {{ .status_code }} {{ .status }}</p>
+            <h1>{{ .title }}</h1>
+            <p>{{ .message }}</p>
+            <p class="muted">HTTP status {{ .status_code }} {{ .status }}</p>
             <div class="notice-actions">
                 <a class="btn btn-primary" href="{{ $.baseUrl }}/">Back to the shop</a>
             </div>
-            <details class="error-details">
-                <summary>Technical details</summary>
-                <pre>{{- .error -}}</pre>
-            </details>
         </div>
     </div>
 </main>
 {{ template "footer" . }}
+{{ end }}
+
+{{/* The htmx answer to a failed request: swapped into #page-alert (see header.html). */}}
+{{ define "error_alert" }}
+<div class="form-notice is-danger">
+    {{ template "icon_alert" . }}
+    <p><strong>{{ .title }}.</strong> {{ .message }}</p>
+</div>
 {{ end }}

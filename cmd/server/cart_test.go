@@ -17,7 +17,7 @@ func staleCart() *fakeCart {
 }
 
 func TestCart_StaleLinesAreSkippedNot500(t *testing.T) {
-	fe := newFakeFrontendWith(t, sampleCatalog(), staleCart())
+	fe := newFakeFrontendWith(t, sampleCatalog(), staleCart(), &fakeCheckout{})
 	rr := do(fe, http.MethodGet, "/cart", "", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status %d, body: %s", rr.Code, rr.Body.String())
@@ -35,7 +35,7 @@ func TestCart_StaleLinesAreSkippedNot500(t *testing.T) {
 
 func TestCart_OnlyStaleLinesStillOffersEmptyCart(t *testing.T) {
 	cart := &fakeCart{items: []*pb.CartItem{{ProductId: "OLJCESPC7Z", Quantity: 1}}}
-	fe := newFakeFrontendWith(t, sampleCatalog(), cart)
+	fe := newFakeFrontendWith(t, sampleCatalog(), cart, &fakeCheckout{})
 	rr := do(fe, http.MethodGet, "/cart", "", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status %d", rr.Code)
@@ -50,7 +50,7 @@ func TestCart_OnlyStaleLinesStillOffersEmptyCart(t *testing.T) {
 }
 
 func TestHeaderCartCount_IgnoresStaleLines(t *testing.T) {
-	fe := newFakeFrontendWith(t, sampleCatalog(), staleCart())
+	fe := newFakeFrontendWith(t, sampleCatalog(), staleCart(), &fakeCheckout{})
 	for _, target := range []string{"/", "/product/pan-05"} {
 		html := do(fe, http.MethodGet, target, "", nil).Body.String()
 		if !strings.Contains(html, `aria-label="Cart, 2 items"`) {

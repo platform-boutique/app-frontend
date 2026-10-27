@@ -122,6 +122,6 @@ func TestTemplates_Order(t *testing.T) {
 }
 
 func TestTemplates_Error(t *testing.T) {
-	html := renderPage(t, "error", map[string]interface{}{"error": "boom", "status_code": 500, "status": "Internal Server Error"})
-	assertContains(t, html, "500 Internal Server Error", "boom")
+	html := renderPage(t, "error", map[string]interface{}{"title": "Something went wrong", "message": "try later", "status_code": 500, "status": "Internal Server Error"})
+	assertContains(t, html, "500 Internal Server Error", "Something went wrong", "try later", `id="page-alert"`)
 }

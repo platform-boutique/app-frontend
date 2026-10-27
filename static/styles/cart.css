@@ -77,3 +77,7 @@
   .form-grid .span-4, .form-grid .span-2 { grid-column: span 6; }
 }
 .place-order { margin-top: var(--space-6); }
+
+/* Error messages for htmx requests (the server targets this region, see header.html). */
+.page-alert:empty { display: none; }
+.page-alert { padding-top: var(--space-4); }

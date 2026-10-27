@@ -28,12 +28,17 @@ import (
 
 type fakeCatalog struct {
 	pb.UnimplementedProductCatalogServiceServer
-	products []*pb.Product
-	cats     []*pb.Category
-	lastReq  *pb.ListProductsRequest
+	products  []*pb.Product
+	cats      []*pb.Category
+	lastReq   *pb.ListProductsRequest
+	listErr   error // ListCategories fails with this
+	filterErr error // ListProductsFiltered fails with this
 }
 
 func (f *fakeCatalog) ListCategories(context.Context, *pb.Empty) (*pb.ListCategoriesResponse, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
 	return &pb.ListCategoriesResponse{Categories: f.cats}, nil
 }
 
@@ -49,6 +54,9 @@ func (f *fakeCatalog) GetProduct(_ context.Context, r *pb.GetProductRequest) (*p
 // ListProductsFiltered mimics the catalog: filter, sort by name, page (page past the end = empty).
 func (f *fakeCatalog) ListProductsFiltered(_ context.Context, r *pb.ListProductsRequest) (*pb.ListProductsResponse, error) {
 	f.lastReq = r
+	if f.filterErr != nil {
+		return nil, f.filterErr
+	}
 	var out []*pb.Product
 	for _, p := range f.products {
 		if r.Department != "" && p.Department != r.Department {
@@ -107,6 +115,22 @@ func (f *fakeCart) EmptyCart(context.Context, *pb.EmptyCartRequest) (*pb.Empty, 
 	return &pb.Empty{}, nil
 }
 
+// fakeCheckout answers PlaceOrder with err, or with a small order.
+type fakeCheckout struct {
+	pb.UnimplementedCheckoutServiceServer
+	err    error
+	placed int
+}
+
+func (f *fakeCheckout) PlaceOrder(context.Context, *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
+	f.placed++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &pb.PlaceOrderResponse{Order: &pb.OrderResult{OrderId: "order-1", ShippingTrackingId: "TR-1",
+		ShippingCost: &pb.Money{CurrencyCode: "USD", Units: 5}}}, nil
+}
+
 type fakeShipping struct {
 	pb.UnimplementedShippingServiceServer
 }
@@ -134,11 +158,11 @@ func (fakeAds) GetAds(context.Context, *pb.AdRequest) (*pb.AdResponse, error) {
 // newFakeFrontend starts one bufconn gRPC server with all fakes and points every connection at it.
 func newFakeFrontend(t *testing.T, cat *fakeCatalog) *frontendServer {
 	t.Helper()
-	return newFakeFrontendWith(t, cat, &fakeCart{})
+	return newFakeFrontendWith(t, cat, &fakeCart{}, &fakeCheckout{})
 }
 
 // newFakeFrontendWith is newFakeFrontend with a cart the test controls.
-func newFakeFrontendWith(t *testing.T, cat *fakeCatalog, cart *fakeCart) *frontendServer {
+func newFakeFrontendWith(t *testing.T, cat *fakeCatalog, cart *fakeCart, co *fakeCheckout) *frontendServer {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
@@ -146,6 +170,7 @@ func newFakeFrontendWith(t *testing.T, cat *fakeCatalog, cart *fakeCart) *fronte
 	pb.RegisterCurrencyServiceServer(srv, fakeCurrency{})
 	pb.RegisterCartServiceServer(srv, cart)
 	pb.RegisterShippingServiceServer(srv, fakeShipping{})
+	pb.RegisterCheckoutServiceServer(srv, co)
 	pb.RegisterRecommendationServiceServer(srv, fakeReco{})
 	pb.RegisterAdServiceServer(srv, fakeAds{})
 	go func() { _ = srv.Serve(lis) }()
@@ -157,7 +182,7 @@ func newFakeFrontendWith(t *testing.T, cat *fakeCatalog, cart *fakeCart) *fronte
 	}
 	t.Cleanup(func() { _ = conn.Close(); srv.Stop() })
 	return &frontendServer{productCatalogSvcConn: conn, currencySvcConn: conn, cartSvcConn: conn,
-		recommendationSvcConn: conn, adSvcConn: conn, shippingSvcConn: conn}
+		recommendationSvcConn: conn, adSvcConn: conn, shippingSvcConn: conn, checkoutSvcConn: conn}
 }
 
 // sampleCatalog: 30 kitchen products (one out of stock, one low), 2 beauty products.

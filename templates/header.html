@@ -25,6 +25,8 @@
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/browse.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/reviews.css">
     {{/* htmx 2.0.11, self-hosted (see README): progressive enhancement of the catalogue toolbar and paging. */}}
+    {{/* 4xx/5xx answers are swapped too: the server sends the error message for #page-alert (HX-Retarget). */}}
+    <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true},{"code":"...","swap":true}]}'>
     <script defer src="{{ $.baseUrl }}/static/js/htmx.min.js"></script>
     <link rel="icon" type="image/svg+xml" href="{{ $.baseUrl }}/static/favicon.svg">
 </head>
@@ -81,4 +83,5 @@
             </div>
         </div>
     </header>
+    <div id="page-alert" class="container page-alert" role="alert"></div>
 {{ end }}

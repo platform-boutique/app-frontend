@@ -229,16 +229,16 @@ func (fe *frontendServer) postReviewHandler(w http.ResponseWriter, r *http.Reque
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	id := mux.Vars(r)["id"]
 	if fe.reviews == nil {
-		renderHTTPError(log, r, w, errors.New("reviews are not enabled"), http.StatusNotFound)
+		fe.renderHTTPError(log, r, w, errors.New("reviews are not enabled"), http.StatusNotFound)
 		return
 	}
 	if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-		renderHTTPError(log, r, w, errors.New("cross-site form post refused"), http.StatusForbidden)
+		fe.renderHTTPError(log, r, w, errors.New("cross-site form post refused"), http.StatusForbidden)
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
-		renderHTTPError(log, r, w, errors.Wrap(err, "could not read the form"), http.StatusBadRequest)
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "could not read the form"), http.StatusBadRequest)
 		return
 	}
 	rating, _ := strconv.Atoi(r.PostFormValue("rating"))
@@ -251,7 +251,7 @@ func (fe *frontendServer) postReviewHandler(w http.ResponseWriter, r *http.Reque
 		if status.Code(err) == codes.NotFound {
 			code = http.StatusNotFound
 		}
-		renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve product"), code)
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve product"), code)
 		return
 	}
 	if form.HasErrors() {
