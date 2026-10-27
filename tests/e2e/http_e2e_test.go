@@ -194,12 +194,30 @@ func TestHome_ReturnsOK(t *testing.T) {
 	}
 }
 
+// seededProductID is a product of the catalog seed (apps/product-catalog-service/data/seed/products.json).
+// The ids of the old Online Boutique catalog do not exist any more.
+const seededProductID = "blue-frock-162"
+
+func TestProduct_UnknownID_ReturnsNotFound(t *testing.T) {
+	skipIfDownstream(t)
+
+	resp, err := defaultClient.Get(baseURL() + "/product/no-such-product")
+	if err != nil {
+		t.Fatalf("GET /product/no-such-product: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("got status %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestProduct_ExistingID_ReturnsOK(t *testing.T) {
 	skipIfDownstream(t)
 
-	resp, err := defaultClient.Get(baseURL() + "/product/OLJCESPC7Z")
+	resp, err := defaultClient.Get(baseURL() + "/product/"+seededProductID)
 	if err != nil {
-		t.Fatalf("GET /product/OLJCESPC7Z: %v", err)
+		t.Fatalf("GET /product/%s: %v", seededProductID, err)
 	}
 	defer resp.Body.Close()
 
@@ -226,7 +244,7 @@ func TestAddToCart_InvalidQuantity_ReturnsBadRequest(t *testing.T) {
 	skipIfDownstream(t)
 
 	resp, err := defaultClient.PostForm(baseURL()+"/cart", url.Values{
-		"product_id": {"OLJCESPC7Z"},
+		"product_id": {seededProductID},
 		"quantity":   {"0"}, // invalid: must be 1-10
 	})
 	if err != nil {
