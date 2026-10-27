@@ -1,6 +1,6 @@
 # frontend
 
-The HTTP web storefront for the platform-demo e-commerce platform. It serves server-rendered HTML pages and static assets, keeps a session cookie per visitor, and fans out to seven backend gRPC services to build every page. It is the **only** component users (and ingress) talk to directly; everything else is internal.
+The HTTP web storefront for the platform-demo e-commerce platform. It serves server-rendered HTML pages and static assets, keeps a session cookie per visitor, and fans out to seven backend gRPC services (plus the optional `review-service`) to build every page. It is the **only** component users (and ingress) talk to directly; everything else is internal.
 
 Part of the [platform-demo](https://github.com/platform-boutique) platform — microservices, observability (LGTM stack), GitOps (Argo CD), policy enforcement (Kyverno), infrastructure provisioning (Crossplane) and an internal developer portal (Backstage). See the master `README.md` in the platform-demo root for the whole-system view.
 
@@ -14,7 +14,7 @@ Part of the [platform-demo](https://github.com/platform-boutique) platform — m
 | **Metrics** | Pushed over OTLP/gRPC (Prometheus registry bridged into OpenTelemetry); `/metrics` on `9464` is still served for debugging |
 | **Health** | `GET /_healthz` → `200 ok` — static, no dependency checks |
 | **State** | None server-side; session id lives in a browser cookie, carts live in `cart-service` |
-| **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service` |
+| **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service`; optional: `review-service` (ratings and reviews, see below) |
 | **Called by** | Browsers / ingress / load generators |
 | **Not used** | `payment-service` and `email-service` are only reached via `checkout-service`. `shopping-assistant-service` is **not** wired in |
 
@@ -25,7 +25,8 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | Route | Method | Description |
 |---|---|---|
 | `/` | GET, HEAD | Home — product grid, currency picker, ad, cart size |
-| `/product/{id}` | GET, HEAD | Product page — product, price, recommendations, ad |
+| `/product/{id}` | GET, HEAD | Product page — product, price, recommendations, ad, rating summary, reviews and the review form. `?rpage=N` selects the page of reviews; `?reviewed=1` shows the "review posted" message. With `HX-Request` and `rpage` it returns only the next `<li>` review items (htmx "load more") |
+| `/product/{id}/reviews` | POST | Post a review (form fields `author_name`, `rating` 1-5, `comment`). Valid: `303` back to `/product/{id}?reviewed=1#reviews`. Invalid: the product page again with `422` and inline errors; review service not reachable: `503` with the form kept; reviews switched off or unknown product: `404`; `Sec-Fetch-Site: cross-site`: `403` |
 | `/cart` | GET, HEAD | View cart — items, shipping estimate, total, recommendations |
 | `/cart` | POST | Add item (form fields `product_id`, `quantity`) |
 | `/cart/empty` | POST | Empty the cart |
@@ -43,8 +44,9 @@ All routes are prefixed with `BASE_URL` (empty by default).
 
 | Page | Calls |
 |---|---|
-| Home | currency (list + convert per product), product-catalog (list), cart (get), ad (100 ms deadline, failures ignored) |
-| Product | product-catalog (get), currency, cart, recommendation → product-catalog (up to 4), ad |
+| Home | currency (list + convert per product), product-catalog (list), cart (get), ad (100 ms deadline, failures ignored), review (ONE `GetRatingSummary` with the ids of the page, 400 ms deadline, failures ignored) |
+| Product | product-catalog (get), currency, cart, recommendation → product-catalog (up to 4), ad, review (`ListReviews`, 5 per page, 400 ms deadline, failures ignored) |
+| Post review | product-catalog (get, the product must exist), review (`AddReview`, 2 s deadline) |
 | Cart | cart (get), shipping (quote with nil address), currency, product-catalog, recommendation |
 | Checkout | checkout (PlaceOrder), then recommendation + currency for the confirmation page |
 
@@ -68,6 +70,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `CHECKOUT_SERVICE_ADDR` | **Yes** | — | e.g. `checkout-service:5050` |
 | `SHIPPING_SERVICE_ADDR` | **Yes** | — | e.g. `shipping-service:50051` |
 | `AD_SERVICE_ADDR` | **Yes** | — | e.g. `ad-service:9555` |
+| `REVIEW_SERVICE_ADDR` | No | `review-service:8084` | `host:port` of review-service (gRPC). Optional: if it is unreachable the pages render without stars and without reviews (see "Ratings and reviews"). Set to an empty string to switch ratings and reviews off completely |
 | `PORT` | No | `8080` | HTTP listen port |
 | `LISTEN_ADDR` | No | `` (all interfaces) | Bind address; leave empty in containers |
 | `METRICS_PORT` | No | `9464` | Prometheus listener port |
@@ -86,7 +89,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 
 Notes:
 
-- All seven `*_ADDR` variables are **mandatory**: a missing one makes the process `panic` at startup. They are plain `host:port` (no scheme). Use FQDNs (`svc.<namespace>.svc.cluster.local:<port>`) if services live in other namespaces.
+- All seven `*_ADDR` variables except `REVIEW_SERVICE_ADDR` are **mandatory**: a missing one makes the process `panic` at startup. They are plain `host:port` (no scheme). Use FQDNs (`svc.<namespace>.svc.cluster.local:<port>`) if services live in other namespaces.
 - gRPC connections use `grpc.NewClient` (lazy): the pod starts and `/_healthz` returns `ok` even if every backend is down. Page loads then fail with HTTP 500 until backends return.
 - The earlier README listed `ENV_PLATFORM`; it is **not read by the code**.
 - Log level is hard-coded to `debug` (JSON via `logrus`) — expect chatty logs; there is no env switch.
@@ -102,6 +105,19 @@ Notes:
 - **Responsive / accessible:** product grid 2 / 3 / 4 columns (phone / tablet / desktop), square photo frames (`aspect-ratio` + `object-fit`) so square webp and older non-square jpgs both fit; skip link, landmarks, visible focus rings, `prefers-reduced-motion` respected.
 - **Extension points:** `templates/catalog.html` defines empty `nav_extra`, `catalog_toolbar` and `catalog_pagination` templates that the home page and header already call, for the search/filter/pagination work.
 - **Checked so far:** templates rendered with sample data by a throwaway preview server and screenshotted with headless Chromium (Playwright) at 360, 390, 430, 768 and 1280 px, light and dark, with no horizontal overflow; the theme toggle and reload persistence were checked the same way. Not yet checked against the running stack, and contrast ratios were calculated by hand, not measured with a tool.
+
+## Ratings and reviews
+
+Stars and reviews come from `review-service` (proto copied to `proto/reviews.proto`, stubs in `genproto/reviews*.pb.go`; only the `go_package` option differs from the service's own file). The catalogue's own `rating` / `review_count` fields are no longer shown.
+
+- **Grid** (home, department, search, paging and the htmx fragment): each card with reviews shows stars and the count; one `GetRatingSummary` call per page, not one per product. Products without reviews show nothing.
+- **Product page:** the rating under the title (links to `#reviews`), then the average, the review count, the reviews newest first (5 per page) and the "Write a review" form. The API has no per-star counts, so there are no distribution bars. Paging: plain "Older reviews" / "Newer reviews" links (`?rpage=N`); with htmx, "Show more reviews" appends the next page in place.
+- **Form:** name (1-80 characters), rating (radio buttons drawn as stars, arrow keys work), review text (1-2000 characters). The same limits as review-service are checked here first; errors are shown above the form and next to each field, the entered values are kept, and the post redirects back on success (post/redirect/get). Review text is always HTML-escaped (`html/template`); line breaks are kept by CSS.
+- **Accessibility:** a rating reads "4.5 out of 5, 12 reviews" (the stars themselves are `aria-hidden`), form fields have labels, radio stars are real focusable inputs with a focus ring, colours come from the theme tokens (`--color-star` in `static/styles/reviews.css`) in light and dark.
+- **CSRF:** like the other forms there is no token. Visitor state is in `SameSite=Strict` cookies and a review carries no identity; additionally a post with `Sec-Fetch-Site: cross-site` is refused.
+- **Degradation:** the connection is lazy and `REVIEW_SERVICE_ADDR` defaults to `review-service:8084`, so a missing or down service never stops the pod or the pages: grid cards have no stars, the product page shows "Reviews are not available right now" (the form is still there and answers `503` if the service stays down), and reads are cut off after 400 ms. With `REVIEW_SERVICE_ADDR=` (empty) the reviews block and the stars are not rendered at all.
+- **Checked:** `GOTOOLCHAIN=auto go vet ./... && go test -race ./...` (fake review client: one batched call, stars, service down or hung, switched off, validation, XSS, paging, fragment, post/redirect). By hand with headless Chromium against the real review-service image (seeded) and the frontend binary on the host with stub catalog/currency/cart backends: grid stars at 1280 px, product page with reviews, load more with htmx and with JavaScript off, invalid and valid post, arrow-key rating, light and dark, 390 px without horizontal scroll, review service stopped (200 without stars, post gives 503), `REVIEW_SERVICE_ADDR` unset (service not resolvable: 200, first request ~350 ms) and empty. Not run: the container image of this version, screen readers, contrast measured with a tool.
+- **Not changed:** the "Top rated" sort still uses the catalogue's `rating` field, not review-service.
 
 ## Container image
 
@@ -230,6 +246,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── main.go          # entrypoint: env wiring, gRPC dials, router, middleware chain, HTTP server
 │   ├── handlers.go      # page handlers (home, product, cart, checkout, currency, logout, product-meta)
 │   ├── rpc.go           # gRPC client helpers for each backend
+│   ├── reviews.go       # review-service client use: rating summaries, review list, review form validation and POST handler
 │   ├── middleware.go    # request logging + session-id cookie
 │   ├── otlp.go          # OTLP/gRPC setup: trace, metric (Prometheus bridge) and log (logrus hook) providers
 │   ├── telemetry.go     # Prometheus HTTP metrics, /metrics server, route wrapping, Pyroscope
@@ -241,10 +258,11 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── header.html, footer.html  # page shell: theme script, header (brand, nav, currency, theme toggle, cart), footer
 │   ├── home.html, product.html, cart.html, order.html, error.html  # pages
 │   ├── ad.html, recommendations.html  # shared blocks
+│   ├── reviews.html     # stars, rating badge, reviews block, review items (htmx fragment), review form
 │   ├── icons.html       # inline SVG brand mark and icons (no image files)
 │   └── catalog.html     # empty extension points: nav_extra, catalog_toolbar, catalog_pagination
 ├── static/
-│   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css
+│   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css, browse.css, reviews.css
 │   ├── favicon.svg
 │   └── img/products/    # product photos
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
@@ -258,4 +276,5 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 - `Secure` + `SameSite=Strict` cookies break carts over plain HTTP outside `localhost`.
 - Health is static; readiness doesn't reflect backend availability.
 - Debug-level JSON logging is unconditional.
+- Reviews: no spam protection, rate limiting or moderation (anyone who can load a product page can post); the review author is a free-text name, not an account.
 - Per-request gRPC calls have no retries; the ad call has a 100 ms deadline, the rest use the request context.
