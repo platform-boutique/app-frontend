@@ -438,6 +438,8 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		"total_cost":       totalPrice,
 		"items":            items,
 		"expiration_years": []int{year, year + 1, year + 2, year + 3, year + 4},
+		"countries":        checkoutCountries,
+		"us_country":       usCountry,
 	})); err != nil {
 		log.Println(err)
 	}
@@ -459,6 +461,13 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 		ccYear, _     = strconv.ParseInt(r.FormValue("credit_card_expiration_year"), 10, 32)
 		ccCVV, _      = strconv.ParseInt(r.FormValue("credit_card_cvv"), 10, 32)
 	)
+
+	// the form only asks for a state in the United States: normalise the spelling, and drop a state posted for any other country
+	if isUS(country) {
+		country = usCountry
+	} else {
+		state = ""
+	}
 
 	payload := validator.PlaceOrderPayload{
 		Email:         email,

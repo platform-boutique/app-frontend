@@ -44,7 +44,7 @@ type PlaceOrderPayload struct {
 	StreetAddress string `validate:"required,max=512"`
 	ZipCode       int64  `validate:"required"`
 	City          string `validate:"required,max=128"`
-	State         string `validate:"required,max=128"`
+	State         string `validate:"required_if=Country 'United States',max=128"` // only the United States has states in the form
 	Country       string `validate:"required,max=128"`
 	CcNumber      string `validate:"required,credit_card"`
 	CcMonth       int64  `validate:"required,gte=1,lte=12"`

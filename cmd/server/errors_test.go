@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -146,5 +147,44 @@ func TestHTMXRequestThatFailsGetsAnAlertFragment(t *testing.T) {
 	assertContains(t, body, msgUnavailable)
 	if strings.Contains(body, "<html") || strings.Contains(body, "10.0.0.1") {
 		t.Errorf("fragment should be a small message without page chrome or details:\n%s", body)
+	}
+}
+
+// The form asks for a state only in the United States: any other country sends none, and "US" means "United States".
+func TestCheckout_StateOnlyForTheUnitedStates(t *testing.T) {
+	order := func(country, state string) string {
+		v, err := url.ParseQuery(goodOrder)
+		if err != nil {
+			t.Fatal(err)
+		}
+		v.Set("country", country)
+		v.Set("state", state)
+		return v.Encode()
+	}
+	cases := []struct {
+		name, country, state string
+		code                 int
+		wantCountry, wantSt  string
+	}{
+		{"US with a state", "United States", "IL", 200, "United States", "IL"},
+		{"short spelling is normalised", "US", "IL", 200, "United States", "IL"},
+		{"US without a state is refused", "United States", "", 422, "", ""},
+		{"other country, state field gone", "Germany", "", 200, "Germany", ""},
+		{"other country, stray state is dropped", "Canada", "ON", 200, "Canada", ""},
+	}
+	for _, c := range cases {
+		co := &fakeCheckout{}
+		fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, co)
+		rr := do(fe, http.MethodPost, "/cart/checkout", order(c.country, c.state), nil)
+		if rr.Code != c.code {
+			t.Errorf("%s: status %d, want %d", c.name, rr.Code, c.code)
+			continue
+		}
+		if c.code == 200 && (co.address == nil || co.address.Country != c.wantCountry || co.address.State != c.wantSt) {
+			t.Errorf("%s: checkout got %+v, want country %q state %q", c.name, co.address, c.wantCountry, c.wantSt)
+		}
+		if c.code != 200 && co.placed != 0 {
+			t.Errorf("%s: the order reached checkout", c.name)
+		}
 	}
 }

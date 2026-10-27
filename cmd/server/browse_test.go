@@ -118,12 +118,14 @@ func (f *fakeCart) EmptyCart(context.Context, *pb.EmptyCartRequest) (*pb.Empty, 
 // fakeCheckout answers PlaceOrder with err, or with a small order.
 type fakeCheckout struct {
 	pb.UnimplementedCheckoutServiceServer
-	err    error
-	placed int
+	err     error
+	placed  int
+	address *pb.Address // of the last PlaceOrder
 }
 
-func (f *fakeCheckout) PlaceOrder(context.Context, *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
+func (f *fakeCheckout) PlaceOrder(_ context.Context, in *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	f.placed++
+	f.address = in.Address
 	if f.err != nil {
 		return nil, f.err
 	}

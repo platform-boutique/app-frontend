@@ -86,13 +86,18 @@
                         <label for="city">City</label>
                         <input class="input" type="text" id="city" name="city" value="Springfield" autocomplete="address-level2" required>
                     </div>
-                    <div class="field span-2">
-                        <label for="state">State</label>
-                        <input class="input" type="text" id="state" name="state" value="IL" autocomplete="address-level1" required>
-                    </div>
                     <div class="field span-4">
                         <label for="country">Country</label>
-                        <input class="input" type="text" id="country" name="country" placeholder="Country name" value="United States" autocomplete="country-name" required>
+                        <select class="input" id="country" name="country" autocomplete="country-name" required data-us="{{ $.us_country }}">
+                            {{- range $.countries }}
+                            <option value="{{ . }}"{{ if eq . $.us_country }} selected{{ end }}>{{ . }}</option>
+                            {{- end }}
+                        </select>
+                    </div>
+                    {{- /* shown only for the United States; checkout.js hides and disables it for any other country (the server ignores it then too) */}}
+                    <div class="field span-2" id="state-field">
+                        <label for="state">State</label>
+                        <input class="input" type="text" id="state" name="state" value="IL" autocomplete="address-level1" required>
                     </div>
                 </div>
 
@@ -150,5 +155,6 @@
 
     {{ if $.recommendations }}{{ template "recommendations" $ }}{{ end }}
 </main>
+<script defer src="{{ $.baseUrl }}/static/js/checkout.js"></script>
 {{ template "footer" . }}
 {{ end }}

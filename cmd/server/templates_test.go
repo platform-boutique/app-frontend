@@ -88,8 +88,13 @@ func TestTemplates_CartWithItems(t *testing.T) {
 		"shipping_cost":    &pb.Money{CurrencyCode: "USD", Units: 5},
 		"total_cost":       &pb.Money{CurrencyCode: "USD", Units: 17},
 		"expiration_years": []int{2026, 2027},
+		"countries":        []string{usCountry, "Canada", "Germany"},
+		"us_country":       usCountry,
 	})
 	assertContains(t, html, "Cart (1)", "MUG1", `action="/cart/checkout"`, `action="/cart/empty"`)
+	// country is a dropdown with the United States preselected; the state field is wrapped so checkout.js can drop it for other countries
+	assertContains(t, html, `<select class="input" id="country" name="country"`, `<option value="United States" selected>`,
+		`<option value="Canada">`, `id="state-field"`, `/static/js/checkout.js`)
 	for _, field := range []string{"email", "street_address", "zip_code", "city", "state", "country",
 		"credit_card_number", "credit_card_expiration_month", "credit_card_expiration_year", "credit_card_cvv"} {
 		assertContains(t, html, `name="`+field+`"`)

@@ -73,6 +73,7 @@
 .form-grid .span-6 { grid-column: span 6; }
 .form-grid .span-4 { grid-column: span 4; }
 .form-grid .span-2 { grid-column: span 2; }
+.form-grid [hidden] { display: none; }
 @media (max-width: 399px) {
   .form-grid .span-4, .form-grid .span-2 { grid-column: span 6; }
 }

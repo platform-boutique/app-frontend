@@ -30,7 +30,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/cart` | GET, HEAD | View cart — items, shipping estimate, total, recommendations. Lines whose product is no longer in the catalog (a cart outlives the catalog) are skipped, listed in a notice with an Empty cart button, logged once per request and not counted in the header |
 | `/cart` | POST | Add item (form fields `product_id`, `quantity` 1-10). `422` with a readable message when the product is out of stock or quantity plus what is already in the cart exceeds the stock; unknown product: `404`. Stock is only checked here, orders do not decrement it yet |
 | `/cart/empty` | POST | Empty the cart |
-| `/cart/checkout` | POST | Validate the form, call `checkout-service.PlaceOrder`, render the order page |
+| `/cart/checkout` | POST | Validate the form, call `checkout-service.PlaceOrder`, render the order page. The country is a dropdown (the names shipping-service accepts, United States first and preselected); the State field exists only for the United States: `static/js/checkout.js` hides and disables it for any other country, and the server ignores a state sent for another country, normalises `US`/`USA` to `United States` and requires a state for it |
 | `/setCurrency` | POST | Set the display currency cookie (`currency_code`) |
 | `/logout` | GET | Expire all cookies and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
@@ -312,3 +312,7 @@ Run: `GOTOOLCHAIN=auto go vet ./... && GOTOOLCHAIN=auto go test -race -count=1 .
 - Per-request gRPC calls have no retries; each has a deadline (3 s, 15 s for checkout, 100 ms for ads, see "Deadlines").
 - Stock is shown and capped in the cart, but orders do not decrement it (inventory is a later slice).
 - `/setCurrency` redirects to the `Referer` header as is, and `/static/` lists directories without cache headers (found by the audit, not changed).
+
+## Wide screens
+
+The page container grows with the screen (1200 px up to 1359, 1440 px from 1360, 1680 px from 1720, 1960 px from 2200; `--container` in `static/styles/styles.css`), and the product and recommendation grids add columns with it (5 from 1360 px, 6 from 1720 px, 7 from 2200 px); the product gallery is up to 640 px wide from 1360 px. Phones and tablets are unchanged. Checked by hand with headless Chromium at 1920, 1440 and 390 px (home, product, cart/checkout with the United States and Germany); not run: 2200 px and wider, other browsers.
