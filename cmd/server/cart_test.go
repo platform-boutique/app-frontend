@@ -2,8 +2,12 @@ package main
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	pb "frontend/genproto"
 )
@@ -57,4 +61,27 @@ func TestHeaderCartCount_IgnoresStaleLines(t *testing.T) {
 			t.Errorf("%s: header count should be 2 (stale lines excluded)", target)
 		}
 	}
+}
+
+func TestNav_DepartmentsOnCartAndOrderPages(t *testing.T) {
+	fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, &fakeCheckout{})
+	for name, rr := range map[string]*httptest.ResponseRecorder{
+		"cart":  do(fe, http.MethodGet, "/cart", "", nil),
+		"order": do(fe, http.MethodPost, "/cart/checkout", goodOrder, nil),
+	} {
+		if rr.Code != http.StatusOK {
+			t.Errorf("%s: status %d", name, rr.Code)
+		}
+		assertContains(t, rr.Body.String(), `href="/?category=kitchen"`, `href="/?category=beauty"`)
+	}
+}
+
+func TestEmptyState_DepartmentUnknownOnlyWhenCategoriesAreKnown(t *testing.T) {
+	cat := sampleCatalog()
+	cat.listErr = status.Error(codes.Unavailable, "down")
+	html := serve(newFakeFrontend(t, cat), "/?category=beauty&q=zzzz", false).Body.String()
+	if strings.Contains(html, "This department does not exist") {
+		t.Error("claims the department does not exist although the department list is unavailable")
+	}
+	assertContains(t, html, "No product matches your search")
 }

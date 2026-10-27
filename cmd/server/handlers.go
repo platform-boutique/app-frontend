@@ -400,6 +400,7 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		"recommendations":  recommendations,
 		"cart_size":        linesSize(lines),
 		"stale_items":      stale,
+		"categories":       fe.navCategories(r.Context()),
 		"shipping_cost":    shippingCost,
 		"show_currency":    true,
 		"total_cost":       totalPrice,
@@ -495,6 +496,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 	if err := getTemplates().ExecuteTemplate(w, "order", injectCommonTemplateData(r, map[string]interface{}{
 		"show_currency":   false,
 		"currencies":      currencies,
+		"categories":      fe.navCategories(r.Context()),
 		"order":           order.GetOrder(),
 		"total_paid":      &totalPaid,
 		"recommendations": recommendations,

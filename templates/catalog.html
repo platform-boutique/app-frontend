@@ -81,7 +81,7 @@
     <div class="notice-icon is-neutral">{{ template "icon_bag_empty" . }}</div>
     <h3>Nothing found</h3>
     <p class="muted">
-      {{ if and $.browse.Category (not $.category) }}This department does not exist.
+      {{ if and $.browse.Category $.categories (not $.category) }}This department does not exist.
       {{ else if $.browse.Query }}No product matches your search. Try another word or browse all products.
       {{ else }}There are no products here yet.{{ end }}
     </p>
