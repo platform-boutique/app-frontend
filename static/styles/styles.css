@@ -370,7 +370,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   min-width: 0;
 }
 .brand:hover { color: var(--color-text); }
-.brand-mark { width: 32px; height: 32px; flex: none; }
+.brand-mark { width: 36px; height: 36px; flex: none; }
 .brand-name { overflow: hidden; text-overflow: ellipsis; }
 
 .site-nav { margin-right: auto; }
