@@ -1,0 +1,196 @@
+{{/* Order history (/orders) and order tracking (/orders/{id}). Styles: static/styles/orders.css. */}}
+
+{{ define "status_badge" }}<span class="status-badge {{ .Class }}">{{ .Label }}</span>{{ end }}
+
+{{ define "orders_history" }}
+{{ template "header" . }}
+<main id="main" class="orders-page">
+    <div class="container">
+        <div class="section-head orders-head">
+            <h1>Your orders</h1>
+            {{ if $.rows }}<p>{{ $.total }} order{{ if ne $.total 1 }}s{{ end }}, newest first</p>{{ end }}
+        </div>
+
+        {{ if $.rows }}
+        <ul class="order-list">
+            {{ range $.rows }}
+            <li class="order-card">
+                <div class="order-card-main">
+                    <h2 class="order-card-id"><a href="{{ .URL }}">Order <span class="mono">#{{ .ShortID }}</span></a></h2>
+                    <p class="order-card-meta muted">
+                        {{ if .Date }}Placed <time datetime="{{ .ISODate }}">{{ .Date }}</time> &middot; {{ end }}{{ .ItemCount }} item{{ if ne .ItemCount 1 }}s{{ end }}
+                    </p>
+                    <p class="order-card-status">{{ template "status_badge" .Status }}</p>
+                </div>
+                {{ if .Thumbs }}
+                <ul class="order-thumbs" aria-hidden="true">
+                    {{ range .Thumbs }}<li><img src="{{ $.baseUrl }}{{ . }}" alt="" width="64" height="64" loading="lazy"></li>{{ end }}
+                    {{ if .More }}<li class="order-thumb-more">+{{ .More }}</li>{{ end }}
+                </ul>
+                {{ end }}
+                <p class="order-card-total"><span class="muted">Total</span> <strong>{{ renderMoney .Total }}</strong></p>
+                <a class="btn btn-secondary btn-sm order-card-link" href="{{ .URL }}">View and track<span class="visually-hidden"> order {{ .ShortID }}</span></a>
+            </li>
+            {{ end }}
+        </ul>
+        {{ template "orders_pagination" . }}
+        {{ else }}
+        <section class="orders-empty" aria-labelledby="orders-empty-title">
+            <div class="notice">
+                <div class="notice-icon is-neutral">{{ template "icon_orders" . }}</div>
+                <h2 id="orders-empty-title">You have no orders yet</h2>
+                <p class="muted">Orders you place in this browser show up here, with their delivery progress.</p>
+                <div class="notice-actions">
+                    <a class="btn btn-primary" href="{{ $.baseUrl }}/">Start shopping</a>
+                </div>
+            </div>
+        </section>
+        {{ end }}
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}
+
+{{ define "orders_pagination" }}
+{{ with $.pagination }}{{ if gt .Pages 1 }}
+<nav class="pagination" aria-label="Pages of orders">
+  {{ if .PrevURL }}<a class="page-link page-prev" href="{{ .PrevURL }}" rel="prev">&larr; Newer</a>
+  {{ else }}<span class="page-link page-prev is-disabled" aria-hidden="true">&larr; Newer</span>{{ end }}
+  <ol>
+    {{ range .Links }}
+    {{ if .Gap }}<li class="page-gap" aria-hidden="true">&hellip;</li>
+    {{ else if .Current }}<li><span class="page-link is-current" aria-current="page">{{ .N }}</span></li>
+    {{ else }}<li><a class="page-link" href="{{ .URL }}" aria-label="Page {{ .N }}">{{ .N }}</a></li>{{ end }}
+    {{ end }}
+  </ol>
+  {{ if .NextURL }}<a class="page-link page-next" href="{{ .NextURL }}" rel="next">Older &rarr;</a>
+  {{ else }}<span class="page-link page-next is-disabled" aria-hidden="true">Older &rarr;</span>{{ end }}
+</nav>
+{{ end }}{{ end }}
+{{ end }}
+
+{{/*
+  The part of the tracking page that changes: status badge, tracker, tracking number.
+  The page wraps it in #order-live; an htmx request for the same URL gets just this
+  (answered 286 once the order is delivered or failed, which stops the polling).
+*/}}
+{{ define "order_live" }}
+{{ with $.o }}
+<div class="track-status">
+    {{ template "status_badge" .Status }}
+    {{ if .AsOf }}<span class="track-asof muted">Status as of <time datetime="{{ .AsOfISO }}">{{ .AsOf }}</time></span>{{ end }}
+</div>
+
+{{ if .Pending }}
+<div class="form-notice track-note" role="status">
+    {{ template "icon_orders" $ }}
+    <p><strong>We are still processing your payment.</strong> Your order is saved; this page updates by itself as soon as the payment is confirmed.</p>
+</div>
+{{ else if .Failed }}
+<div class="form-notice is-danger track-note">
+    {{ template "icon_alert" $ }}
+    <div>
+        <p><strong>This order could not be completed.</strong></p>
+        {{ if .Reason }}<p class="track-reason"><span class="muted">Reason:</span> {{ .Reason }}</p>{{ end }}
+    </div>
+</div>
+{{ else }}
+<ol class="tracker" aria-label="Order progress">
+    {{ range .Stages }}
+    <li class="stage is-{{ .State }}"{{ if eq .State "current" }} aria-current="step"{{ end }}>
+        <span class="stage-dot" aria-hidden="true">{{ if eq .State "done" }}{{ template "icon_check" $ }}{{ end }}</span>
+        <span class="stage-body">
+            <span class="stage-name">{{ .Name }}</span>
+            <span class="stage-state">{{ .Text }}</span>
+            {{ if .When }}<span class="stage-when">{{ if eq .State "pending" }}Expected {{ end }}<time datetime="{{ .ISO }}">{{ .When }}</time></span>{{ end }}
+            {{ if .Expects }}<span class="stage-eta muted">{{ .Expects }}</span>{{ end }}
+        </span>
+    </li>
+    {{ end }}
+</ol>
+{{ end }}
+
+{{ if .TrackingID }}
+<p class="track-tracking"><span class="muted">Tracking number</span> <span class="order-id">{{ .TrackingID }}</span></p>
+{{ end }}
+
+{{ if .Active }}
+<p class="track-refresh muted">This page checks for news every {{ .PollSeconds }} seconds. <noscript>Reload the page to see the latest status.</noscript></p>
+{{ end }}
+{{ end }}
+{{ end }}
+
+{{ define "order_tracking" }}
+{{ template "header" . }}
+<main id="main" class="track-page">
+    <div class="container">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+            <a href="{{ $.baseUrl }}/orders">&larr; All orders</a>
+        </nav>
+
+        {{ with $.o }}
+        <div class="section-head track-head">
+            <h1>Order <span class="mono">#{{ .ShortID }}</span></h1>
+            {{ if .PlacedDate }}<p>Placed {{ .PlacedDate }}</p>{{ end }}
+        </div>
+
+        <div class="track-layout">
+            <div class="track-main">
+                <section class="track-card" aria-labelledby="track-title">
+                    <h2 id="track-title" class="track-card-title">Order status</h2>
+                    <div id="order-live" class="order-live"{{ if .Active }} hx-get="{{ .PollURL }}" hx-trigger="every {{ .PollEvery }}" hx-swap="innerHTML"{{ end }}>
+                        {{ template "order_live" $ }}
+                    </div>
+                </section>
+
+                <section class="track-card" aria-labelledby="items-title">
+                    <h2 id="items-title" class="track-card-title">Items</h2>
+                    <ul class="order-lines">
+                        {{ range .Items }}
+                        <li class="order-line">
+                            <span class="media order-line-media">{{ if .Picture }}<img src="{{ $.baseUrl }}{{ .Picture }}" alt="" width="96" height="96" loading="lazy">{{ end }}</span>
+                            <span class="order-line-body">
+                                <span class="order-line-name">{{ .Name }}</span>
+                                <span class="order-line-qty muted">{{ .Quantity }} &times; {{ renderMoney .UnitPrice }}</span>
+                            </span>
+                            <span class="order-line-total">{{ renderMoney .LineTotal }}</span>
+                        </li>
+                        {{ end }}
+                    </ul>
+                </section>
+            </div>
+
+            <aside class="track-side" aria-label="Order details">
+                <section class="track-card">
+                    <h2 class="track-card-title">Summary</h2>
+                    <dl class="order-summary track-summary">
+                        <div class="order-row">
+                            <dt>Order number</dt>
+                            <dd class="order-id">{{ .ID }}</dd>
+                        </div>
+                        <div class="order-row">
+                            <dt>Shipping</dt>
+                            <dd>{{ renderMoney .Shipping }}</dd>
+                        </div>
+                        <div class="order-row order-total">
+                            <dt>Total</dt>
+                            <dd>{{ renderMoney .Total }}</dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <section class="track-card">
+                    <h2 class="track-card-title">Shipping to</h2>
+                    <address class="track-address">
+                        {{ .Street }}<br>
+                        {{ .CityLine }}<br>
+                        {{ .Country }}
+                    </address>
+                </section>
+            </aside>
+        </div>
+        {{ end }}
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}

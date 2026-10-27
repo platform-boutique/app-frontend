@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "frontend/genproto"
+	pbo "frontend/genproto/orders"
 )
 
 const (
@@ -69,6 +70,11 @@ type frontendServer struct {
 	reviewSvcAddr string
 	reviewSvcConn *grpc.ClientConn
 	reviews       pb.ReviewServiceClient
+
+	// optional: nil when ORDER_SERVICE_ADDR is set to an empty string (order history and tracking off)
+	orderSvcAddr string
+	orderSvcConn *grpc.ClientConn
+	orders       pbo.OrderServiceClient
 
 	nav navCache
 }
@@ -140,6 +146,15 @@ func main() {
 		log.Info("REVIEW_SERVICE_ADDR is empty: ratings and reviews are off")
 	}
 
+	// order-service is optional too: lazy connection, only /orders and /orders/{id} depend on it
+	if svc.orderSvcAddr = ordersAddrFromEnv(); svc.orderSvcAddr != "" {
+		mustConnGRPC(&svc.orderSvcConn, svc.orderSvcAddr)
+		svc.orders = pbo.NewOrderServiceClient(svc.orderSvcConn)
+		ordersEnabled = true
+	} else {
+		log.Info("ORDER_SERVICE_ADDR is empty: order history and tracking are off")
+	}
+
 	// --- Router ---
 	r := mux.NewRouter()
 	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
@@ -150,6 +165,8 @@ func main() {
 	r.HandleFunc(baseUrl+"/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/setCurrency", svc.setCurrencyHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/logout", svc.logoutHandler).Methods(http.MethodGet)
+	r.HandleFunc(baseUrl+"/orders", svc.ordersHistoryHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/orders/{id}", svc.orderTrackingHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/cart/checkout", svc.placeOrderHandler).Methods(http.MethodPost)
 	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", http.FileServer(http.Dir("./static/"))))
 	r.HandleFunc(baseUrl+"/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "User-agent: *\nDisallow: /") })

@@ -633,6 +633,7 @@ func injectCommonTemplateData(r *http.Request, payload map[string]interface{}) m
 		"frontendMessage": frontendMessage,
 		"currentYear":     time.Now().Year(),
 		"baseUrl":         baseUrl,
+		"orders_enabled":  ordersEnabled,
 	}
 	for k, v := range payload {
 		data[k] = v

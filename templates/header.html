@@ -24,6 +24,7 @@
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/order.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/browse.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/reviews.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/orders.css">
     {{/* htmx 2.0.11, self-hosted (see README): progressive enhancement of the catalogue toolbar and paging. */}}
     {{/* 4xx/5xx answers are swapped too: the server sends the error message for #page-alert (HX-Retarget). */}}
     <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true},{"code":"...","swap":true}]}'>
@@ -72,6 +73,13 @@
                     {{ template "icon_moon" . }}
                     {{ template "icon_sun" . }}
                 </button>
+
+                {{ if $.orders_enabled }}
+                <a href="{{ $.baseUrl }}/orders" class="icon-btn orders-link" aria-label="Orders">
+                    {{ template "icon_orders" . }}
+                    <span class="orders-link-label" aria-hidden="true">Orders</span>
+                </a>
+                {{ end }}
 
                 <a href="{{ $.baseUrl }}/cart" class="icon-btn cart-link"
                     aria-label="Cart{{ if $.cart_size }}, {{ $.cart_size }} item{{ if ne $.cart_size 1 }}s{{ end }}{{ else }}, empty{{ end }}">

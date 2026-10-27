@@ -29,7 +29,12 @@
             </dl>
 
             <div class="notice-actions">
+                {{ if and $.orders_enabled .order.OrderId }}
+                <a class="btn btn-primary" href="{{ $.baseUrl }}/orders/{{ .order.OrderId }}">Track your order</a>
+                <a class="btn btn-secondary" href="{{ $.baseUrl }}/">Continue shopping</a>
+                {{ else }}
                 <a class="btn btn-primary" href="{{ $.baseUrl }}/">Continue shopping</a>
+                {{ end }}
             </div>
         </div>
     </section>

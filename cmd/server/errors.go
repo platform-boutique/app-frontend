@@ -81,6 +81,10 @@ func readableMessage(msg string) string {
 // classifyError decides status, title and text of the error page. code is what the
 // caller would use for an error that carries no gRPC status.
 func classifyError(err error, code int) errorPage {
+	var ou *ordersUnavailableError
+	if errors.As(err, &ou) {
+		return errorPage{http.StatusServiceUnavailable, "Orders are not available", msgOrdersUnavailable}
+	}
 	var gs interface{ GRPCStatus() *status.Status }
 	if errors.As(err, &gs) {
 		st := gs.GRPCStatus()
