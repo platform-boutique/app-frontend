@@ -7,7 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <meta name="description" content="{{ $.brand_name }}: {{ $.brand_tagline }}">
-    <title>{{ $.brand_name }} | {{ $.brand_tagline }}</title>
+    <title>{{ template "page_title" . }}</title>
     {{/* Runs before the stylesheets so the chosen theme is applied on first paint (no flash). */}}
     <script>
         (function () {

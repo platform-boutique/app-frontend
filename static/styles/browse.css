@@ -77,7 +77,8 @@
 .search-row .btn { flex: none; }
 
 .result-count { margin: 0 0 var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm); }
-.htmx-request.catalog-results, .htmx-request .catalog-results { opacity: 0.6; transition: opacity var(--transition); }
+.catalog-results { scroll-margin-top: calc(var(--header-h) + var(--space-4)); transition: opacity var(--transition); }
+.catalog-results.htmx-request { opacity: 0.6; }
 
 .empty-state {
   padding: var(--space-7) var(--space-5);

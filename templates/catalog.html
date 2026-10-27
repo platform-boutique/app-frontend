@@ -3,10 +3,21 @@
   empty state, pagination) and the product card. Styles: static/styles/browse.css.
 
   Progressive enhancement: every control is a plain link or GET form. With htmx
-  loaded, the toolbar form and the pagination links swap only #catalog-results
-  (the server answers HX-Request with the "catalog_results" fragment) and push
-  the URL. Department links are full page loads (they change the heading and tiles).
+  loaded, the toolbar form and the pagination links replace #catalog-results
+  (hx-swap="outerHTML": the fragment is the whole element, so there is exactly one
+  #catalog-results and one aria-live region) and push the URL. The fragment also
+  carries a <title>, which htmx puts into document.title. When the swap would
+  change the page layout (landing page <-> search/category/paging view, which have
+  other hero, headings and breadcrumbs) the server answers HX-Redirect and the
+  browser loads the full page. Department links are full page loads.
 */}}
+
+{{/* The document title: "<page> | brand", the landing page keeps "brand | tagline". */}}
+{{ define "page_title" }}{{ if $.title }}{{ $.title }} | {{ $.brand_name }}{{ else }}{{ $.brand_name }} | {{ $.brand_tagline }}{{ end }}{{ end }}
+
+{{/* What the server answers an htmx request with. */}}
+{{ define "catalog_fragment" }}<title>{{ template "page_title" . }}</title>
+{{ template "catalog_results" . }}{{ end }}
 
 {{/* Department links in the header, rendered as <li> items. */}}
 {{ define "nav_extra" }}
@@ -39,7 +50,7 @@
 {{/* Toolbar above the product grid: search box and sort. A GET form that keeps the category. */}}
 {{ define "catalog_toolbar" }}
 <form class="catalog-toolbar" method="get" action="{{ $.baseUrl }}/" role="search"
-  hx-get="{{ $.baseUrl }}/" hx-target="#catalog-results" hx-push-url="true" hx-trigger="submit, change from:#sort">
+  hx-get="{{ $.baseUrl }}/" hx-target="#catalog-results" hx-swap="outerHTML" hx-indicator="#catalog-results" hx-push-url="true" hx-trigger="submit, change from:#sort">
   {{ if $.browse.Category }}<input type="hidden" name="category" value="{{ $.browse.Category }}">{{ end }}
   <div class="field search-field">
     <label for="q">Search{{ with $.category }} in {{ .Name }}{{ end }}</label>
@@ -95,7 +106,7 @@
 {{/* Below the product grid: numbered pagination that keeps the other parameters. */}}
 {{ define "catalog_pagination" }}
 {{ with $.pagination }}{{ if gt .Pages 1 }}
-<nav class="pagination" aria-label="Pages" hx-target="#catalog-results" hx-push-url="true">
+<nav class="pagination" aria-label="Pages" hx-target="#catalog-results" hx-swap="outerHTML show:#catalog-results:top" hx-indicator="#catalog-results" hx-push-url="true">
   {{ if .PrevURL }}<a class="page-link page-prev" href="{{ .PrevURL }}" hx-get="{{ .PrevURL }}" rel="prev">&larr; Prev</a>
   {{ else }}<span class="page-link page-prev is-disabled" aria-hidden="true">&larr; Prev</span>{{ end }}
   <ol>

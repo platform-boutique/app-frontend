@@ -79,6 +79,34 @@ func (p browseParams) sortEnum() pb.ProductSort {
 	return pb.ProductSort_PRODUCT_SORT_NAME_ASC
 }
 
+// landing is the home view without hero-changing parameters: hero, department tiles
+// and the "Our products" heading are shown.
+func (p browseParams) landing() bool { return p.Category == "" && p.Query == "" && p.Page == 1 }
+
+// sameLayout reports whether two views share hero, heading and breadcrumbs, i.e.
+// whether swapping only the results area is enough to go from one to the other.
+func (p browseParams) sameLayout(o browseParams) bool {
+	return p.Category == o.Category && (p.Query == "") == (o.Query == "") && p.landing() == o.landing()
+}
+
+// pageTitle is the document title of the view, "" for the landing page (brand and tagline).
+func (p browseParams) pageTitle(cat *pb.Category) string {
+	if p.landing() {
+		return ""
+	}
+	t := "All products"
+	switch {
+	case cat != nil:
+		t = cat.GetName()
+	case p.Query != "":
+		t = "Search results"
+	}
+	if p.Page > 1 {
+		t += " (page " + strconv.Itoa(p.Page) + ")"
+	}
+	return t
+}
+
 // url builds the `/` link for these params with the given page; defaults are left out.
 func (p browseParams) url(page int) string {
 	v := url.Values{}
@@ -228,6 +256,16 @@ func deptName(cats []*pb.Category, id string) string {
 // History restores (HX-History-Restore-Request) need the full page.
 func isFragmentRequest(r *http.Request) bool {
 	return r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true"
+}
+
+// currentBrowseParams are the parameters of the page an htmx request comes from
+// (HX-Current-URL); ok is false when the header is missing or not a URL.
+func currentBrowseParams(r *http.Request) (browseParams, bool) {
+	u, err := url.Parse(r.Header.Get("HX-Current-URL"))
+	if err != nil || r.Header.Get("HX-Current-URL") == "" {
+		return browseParams{}, false
+	}
+	return parseBrowseParams(&http.Request{URL: u}), true
 }
 
 // productPage is what templates/product.html renders.

@@ -385,8 +385,14 @@ func TestHome_HTMXFragment(t *testing.T) {
 		t.Fatalf("status %d", rr.Code)
 	}
 	html := strings.TrimSpace(rr.Body.String())
-	if !strings.HasPrefix(html, `<div id="catalog-results"`) {
-		t.Errorf("fragment should start with the results container, got %.80q", html)
+	if !strings.HasPrefix(html, `<title>All products (page 2) | Everly</title>`) {
+		t.Errorf("fragment should start with the new document title, got %.80q", html)
+	}
+	if n := strings.Count(html, `id="catalog-results"`); n != 1 {
+		t.Errorf("fragment has %d #catalog-results, want 1", n)
+	}
+	if n := strings.Count(html, `aria-live=`); n != 1 {
+		t.Errorf("fragment has %d aria-live regions, want 1", n)
 	}
 	for _, full := range []string{"<!DOCTYPE", "<header", "site-footer", "catalog-toolbar"} {
 		if strings.Contains(html, full) {
@@ -468,5 +474,55 @@ func TestHome_SearchInputIsAlwaysValidUTF8(t *testing.T) {
 	p := parseBrowseParams(httptest.NewRequest(http.MethodGet, "/?q="+url.QueryEscape(cyr+cyr), nil))
 	if utf8.RuneCountInString(p.Query) != maxQueryLen || p.Query != cyr {
 		t.Errorf("query not cut to %d runes: %d runes", maxQueryLen, utf8.RuneCountInString(p.Query))
+	}
+}
+
+// The swap replaces the whole #catalog-results (outerHTML), otherwise the fragment's own
+// wrapper would nest inside the old one (two ids, two aria-live regions).
+func TestHome_SwapReplacesTheWholeResultsElement(t *testing.T) {
+	html := serve(newFakeFrontend(t, sampleCatalog()), "/", false).Body.String()
+	assertContains(t, html, `hx-swap="outerHTML" hx-indicator="#catalog-results"`, `hx-swap="outerHTML show:#catalog-results:top"`)
+	if n := strings.Count(html, `id="catalog-results"`); n != 1 {
+		t.Errorf("page has %d #catalog-results", n)
+	}
+}
+
+func TestHome_HTMXFromLandingToSearchLoadsTheFullPage(t *testing.T) {
+	fe := newFakeFrontend(t, sampleCatalog())
+	get := func(target, current string) *httptest.ResponseRecorder {
+		req := requestWithContext(http.MethodGet, target, "")
+		req.Header.Set("HX-Request", "true")
+		req.Header.Set("HX-Current-URL", current)
+		rr := httptest.NewRecorder()
+		fe.homeHandler(rr, req)
+		return rr
+	}
+	// landing -> search: hero and heading change, full page
+	if rr := get("/?q=soap", "http://localhost:8080/"); rr.Header().Get("HX-Redirect") != "/?q=soap" || strings.Contains(rr.Body.String(), "catalog-results") {
+		t.Errorf("landing -> search: HX-Redirect %q", rr.Header().Get("HX-Redirect"))
+	}
+	// page 2 -> page 1 is the landing view again
+	if rr := get("/?page=1", "http://localhost:8080/?page=2"); rr.Header().Get("HX-Redirect") != "/" {
+		t.Errorf("page 2 -> 1: HX-Redirect %q", rr.Header().Get("HX-Redirect"))
+	}
+	// same layout: only the results are swapped
+	for _, c := range [][2]string{{"/?page=2", "http://localhost:8080/?page=3"}, {"/?q=pan&page=2", "http://localhost:8080/?q=x"}, {"/?sort=rating", "http://localhost:8080/"}} {
+		rr := get(c[0], c[1])
+		if rr.Header().Get("HX-Redirect") != "" || !strings.Contains(rr.Body.String(), `id="catalog-results"`) {
+			t.Errorf("%s from %s: unexpected redirect %q", c[0], c[1], rr.Header().Get("HX-Redirect"))
+		}
+	}
+}
+
+func TestHome_DocumentTitles(t *testing.T) {
+	fe := newFakeFrontend(t, sampleCatalog())
+	for target, want := range map[string]string{
+		"/":                         "<title>Everly | ",
+		"/?category=kitchen":        "<title>Kitchen | Everly</title>",
+		"/?q=soap":                  "<title>Search results | Everly</title>",
+		"/?category=kitchen&page=2": "<title>Kitchen (page 2) | Everly</title>",
+		"/?page=2":                  "<title>All products (page 2) | Everly</title>",
+	} {
+		assertContains(t, serve(fe, target, false).Body.String(), want)
 	}
 }

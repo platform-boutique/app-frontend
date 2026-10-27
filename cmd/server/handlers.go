@@ -144,10 +144,16 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		"pagination":    buildPagination(params, total),
 		"cart_size":     fe.headerCartSize(r.Context(), log, cart),
 	}
+	data["title"] = params.pageTitle(findCategory(cats, params.Category))
 	name := "home"
 	if fragment {
-		name = "catalog_results"
+		name = "catalog_fragment"
 		w.Header().Set("Vary", "HX-Request")
+		// the view changed more than the results (hero, heading, breadcrumbs): load the full page
+		if cur, ok := currentBrowseParams(r); ok && !params.sameLayout(cur) {
+			w.Header().Set("HX-Redirect", params.url(params.Page))
+			return
+		}
 	} else {
 		data["ad"] = fe.chooseAd(r.Context(), []string{}, log)
 	}
