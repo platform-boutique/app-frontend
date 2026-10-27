@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .h { stroke: #1f1b16; }
+    @media (prefers-color-scheme: dark) { .h { stroke: #f1ece4; } }
+  </style>
+  <rect x="2" y="7" width="28" height="23" rx="7" fill="#a8431f"/>
+  <path class="h" d="M10.5 11V8.5a5.5 5.5 0 0 1 11 0V11" fill="none" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="16" cy="19.5" r="4.25" fill="#f2c46d"/>
+  <path d="M8 25.5h16" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round"/>
+</svg>

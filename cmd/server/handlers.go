@@ -26,7 +26,7 @@ import (
 
 var (
 	frontendMessage = strings.TrimSpace(os.Getenv("FRONTEND_MESSAGE"))
-	isCymbalBrand   = strings.ToLower(os.Getenv("CYMBAL_BRANDING")) == "true"
+	brand           = brandFromEnv()
 	tmpl            *template.Template
 	tmplOnce        sync.Once
 )
@@ -114,7 +114,6 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		"currencies":    currencies,
 		"products":      ps,
 		"cart_size":     cartSize(cart),
-		"banner_color":  os.Getenv("BANNER_COLOR"),
 		"ad":            fe.chooseAd(r.Context(), []string{}, log),
 	})); err != nil {
 		log.Error(err)
@@ -538,7 +537,8 @@ func injectCommonTemplateData(r *http.Request, payload map[string]interface{}) m
 		"session_id":      sessionID(r),
 		"request_id":      r.Context().Value(ctxKeyRequestID{}),
 		"user_currency":   currentCurrency(r),
-		"is_cymbal_brand": isCymbalBrand,
+		"brand_name":      brand.Name,
+		"brand_tagline":   brand.Tagline,
 		"frontendMessage": frontendMessage,
 		"currentYear":     time.Now().Year(),
 		"baseUrl":         baseUrl,

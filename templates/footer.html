@@ -1,55 +1,60 @@
-<!--
- Copyright 2020 Google LLC
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
--->
-
 {{ define "footer" }}
-
-<footer class="py-5">
-    <div class="footer-top">
-        <div class="container footer-social">
-            <p class="footer-text">This website is hosted for demo purposes only. It is not an actual shop. This is not a Google product.</p>
-            <p class="footer-text">© 2020-{{ .currentYear }} Google LLC (<a href="https://github.com/GoogleCloudPlatform/microservices-demo">Source Code</a>)</p>
-            <p class="footer-text">
-                <small>
-                    {{ if $.session_id }}session-id: {{ $.session_id }} — {{end}}
-                    {{ if $.request_id }}request-id: {{ $.request_id }}{{end}}
-                </small>
-                <br/>
-                <small>
-                    {{ if $.deploymentDetails }}
-                        {{ if index .deploymentDetails "CLUSTERNAME" }}
-                        <b>Cluster: </b>{{ index .deploymentDetails "CLUSTERNAME" }}<br/>
-                        {{ end }}
-                        {{ if index .deploymentDetails "ZONE" }}
-                        <b>Zone: </b>{{ index .deploymentDetails "ZONE" }}<br/>
-                        {{ end }}
-                        {{ if index .deploymentDetails "HOSTNAME" }}
-                        <b>Pod: </b>{{ index .deploymentDetails "HOSTNAME" }}
-                        {{ end }}
-                    {{ else }}
-                    Deployment details are still loading.
-                    Try refreshing this page.
-                    {{ end }}
-                </small>
-            </p>
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <a href="{{ $.baseUrl }}/" class="brand">
+                        {{ template "brand_mark" . }}
+                        <span class="brand-name">{{ $.brand_name }}</span>
+                    </a>
+                    <p>{{ $.brand_tagline }}</p>
+                    <p>This is a demo store: nothing is for sale, no payment is taken and no order is shipped.</p>
+                </div>
+                <nav aria-label="Footer">
+                    <ul class="footer-links">
+                        <li><a href="{{ $.baseUrl }}/">Shop</a></li>
+                        <li><a href="{{ $.baseUrl }}/cart">Cart</a></li>
+                    </ul>
+                </nav>
+            </div>
+            <div class="footer-meta">
+                <p>&copy; {{ .currentYear }} {{ $.brand_name }}</p>
+                {{ if or $.session_id $.request_id }}
+                <p class="footer-debug">
+                    {{ if $.session_id }}session-id: {{ $.session_id }}{{ end }}
+                    {{ if and $.session_id $.request_id }} · {{ end }}
+                    {{ if $.request_id }}request-id: {{ $.request_id }}{{ end }}
+                </p>
+                {{ end }}
+            </div>
         </div>
-    </div>
-</footer>
-<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/js/bootstrap.min.js"
-    integrity="sha384-smHYKdLADwkXOn1EmN1qk/HfnUcbVRZyYmZ4qpPea6sjB/pTJ0euyQp0Mk8ck+5T" crossorigin="anonymous">
-</script>
+    </footer>
+    <script>
+        (function () {
+            var btn = document.getElementById('theme-toggle');
+            if (!btn) { return; }
+            var root = document.documentElement;
+            var media = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+            function current() {
+                var t = root.getAttribute('data-theme');
+                if (t === 'light' || t === 'dark') { return t; }
+                return media && media.matches ? 'dark' : 'light';
+            }
+            function label() {
+                var next = current() === 'dark' ? 'light' : 'dark';
+                btn.setAttribute('aria-label', 'Switch to ' + next + ' theme');
+                btn.setAttribute('title', 'Switch to ' + next + ' theme');
+            }
+            btn.addEventListener('click', function () {
+                var next = current() === 'dark' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                try { window.localStorage.setItem('theme', next); } catch (e) { /* not remembered */ }
+                label();
+            });
+            if (media && media.addEventListener) { media.addEventListener('change', label); }
+            label();
+        })();
+    </script>
 </body>
 
 </html>

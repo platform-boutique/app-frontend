@@ -1,80 +1,70 @@
-<!--
- Copyright 2020 Google LLC
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
--->
-
 {{ define "home" }}
-
 {{ template "header" . }}
-<div {{ with $.platform_css }} class="{{.}}" {{ end }}>
-  <span class="platform-flag">
-    {{$.platform_name}}
-  </span>
-</div>
-<main role="main" class="home">
+<main id="main" class="home">
 
-  <!-- The image at the top of the home page, displayed on smaller screens. -->
-  <div class="home-mobile-hero-banner d-lg-none"></div>
-
-  <div class="container-fluid">
-    <div class="row">
-
-      <!-- The image on the left of the home page, displayed on larger screens. -->
-      <!--<div class="col-4 d-none d-lg-block home-desktop-left-image"></div>-->
-      <!-- @TODO: removed temporarily. When uncommenting, also replace below div with this -->
-      <!--<div class="col-12 col-lg-8">-->
-
-      <div class="col-12 col-lg-12 px-10-percent">
-
-        <div class="row hot-products-row px-xl-6">
-
-          <div class="col-12">
-            <h3>Hot Products</h3>
-          </div>
-
-          {{ range $.products }}
-          <div class="col-md-4 hot-product-card">
-            <a href="{{ $.baseUrl }}/product/{{.Item.Id}}">
-              <img loading="lazy" src="{{ $.baseUrl }}{{.Item.Picture}}">
-              <div class="hot-product-card-img-overlay"></div>
-            </a>
-            <div>
-              <div class="hot-product-card-name">{{ .Item.Name }}</div>
-              <div class="hot-product-card-price">{{ renderMoney .Price }}</div>
-            </div>
-          </div>
-          {{ end }}
-
-        </div>
-
-        <!-- Footer for larger screens. -->
-        <div class="row d-none d-lg-block home-desktop-footer-row">
-          <div class="col-12 p-0">
-            {{ template "footer" . }}
-          </div>
-        </div>
-
+  <section class="hero container" aria-labelledby="hero-title">
+    <div class="hero-card">
+      <div class="hero-copy">
+        <span class="hero-eyebrow">New season</span>
+        <h1 id="hero-title">{{ $.brand_tagline }}</h1>
+        <p class="hero-lead">Home, kitchen, wardrobe and the small things in between, all in one place at {{ $.brand_name }}.</p>
+        <a class="btn btn-primary" href="#products">Shop all products</a>
       </div>
-
+      {{ template "hero_art" . }}
     </div>
-  </div>
+  </section>
+
+  <section class="section container" id="products" aria-labelledby="products-title">
+    <div class="section-head">
+      <h2 id="products-title">Our products</h2>
+      <p>{{ len $.products }} item{{ if ne (len $.products) 1 }}s{{ end }}</p>
+    </div>
+
+    {{ template "catalog_toolbar" . }}
+
+    <ul class="product-grid">
+      {{ range $.products }}
+      <li class="product-card">
+        <div class="media">
+          <img loading="lazy" src="{{ $.baseUrl }}{{ .Item.Picture }}" alt="{{ .Item.Name }}" width="800" height="800">
+        </div>
+        <div class="product-card-meta">
+          {{ with .Item.Categories }}<span class="product-card-category">{{ index . 0 }}</span>{{ end }}
+          <a class="product-card-link" href="{{ $.baseUrl }}/product/{{ .Item.Id }}">{{ .Item.Name }}</a>
+          <span class="product-card-price">{{ renderMoney .Price }}</span>
+        </div>
+      </li>
+      {{ end }}
+    </ul>
+
+    {{ template "catalog_pagination" . }}
+  </section>
+
+  {{ if $.ad }}{{ template "text_ad" $ }}{{ end }}
 
 </main>
+{{ template "footer" . }}
+{{ end }}
 
-<!-- Footer for smaller screens. -->
-<div class="d-lg-none">
-  {{ template "footer" . }}
-</div>
-
+{{/* Decorative hero illustration: a shelf with a vase, a mug and a folded towel, drawn in SVG. */}}
+{{ define "hero_art" }}
+<svg class="hero-art" viewBox="0 0 400 300" aria-hidden="true" focusable="false">
+  <circle class="a-sun" cx="292" cy="92" r="58" opacity="0.9"/>
+  <path class="a-surface" d="M60 300V150a110 110 0 0 1 220 0v150z" opacity="0.75"/>
+  <!-- vase with stems -->
+  <path class="a-line" d="M150 150c-6-30 4-60 22-82M160 150c4-26 20-48 40-60M146 150c-14-22-14-44-6-64" fill="none" stroke-width="3" stroke-linecap="round"/>
+  <ellipse class="a-sage" cx="140" cy="84" rx="9" ry="16" transform="rotate(-20 140 84)"/>
+  <ellipse class="a-sage" cx="174" cy="66" rx="9" ry="16" transform="rotate(25 174 66)"/>
+  <ellipse class="a-sage" cx="202" cy="88" rx="9" ry="16" transform="rotate(60 202 88)"/>
+  <path class="a-accent" d="M128 150h46c4 0 6 3 5 7l-8 63c-1 6-5 10-11 10h-18c-6 0-10-4-11-10l-8-63c-1-4 1-7 5-7z"/>
+  <!-- mug -->
+  <path class="a-sage" d="M216 186h52v40c0 7-5 12-12 12h-28c-7 0-12-5-12-12z"/>
+  <path class="a-line" d="M268 196h8a12 12 0 0 1 0 24h-8" fill="none" stroke-width="5"/>
+  <path class="a-line" d="M232 176c0-8 8-8 8-16M250 176c0-8 8-8 8-16" fill="none" stroke-width="3" stroke-linecap="round" opacity="0.5"/>
+  <!-- folded towels -->
+  <rect class="a-sun" x="292" y="206" width="72" height="16" rx="6"/>
+  <rect class="a-accent" x="298" y="222" width="66" height="16" rx="6" opacity="0.85"/>
+  <!-- shelf -->
+  <path class="a-line" d="M24 241h360" stroke-width="6" stroke-linecap="round"/>
+</svg>
 {{ end }}

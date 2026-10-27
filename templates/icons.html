@@ -1,0 +1,72 @@
+{{/*
+  Inline SVG icons and the brand mark. No external assets: every icon is drawn here
+  and coloured with currentColor or CSS custom properties.
+*/}}
+
+{{ define "brand_mark" }}
+<svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+  <rect x="2" y="7" width="28" height="23" rx="7" fill="var(--color-accent)"/>
+  <path d="M10.5 11V8.5a5.5 5.5 0 0 1 11 0V11" fill="none" stroke="var(--color-text)" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="16" cy="19.5" r="4.25" fill="var(--color-sun)"/>
+  <path d="M8 25.5h16" stroke="var(--color-accent-contrast)" stroke-width="2.2" stroke-linecap="round"/>
+</svg>
+{{ end }}
+
+{{ define "icon_cart" }}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M5 8h14l-1.2 11.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9L5 8z"/>
+  <path d="M9 10V7a3 3 0 0 1 6 0v3"/>
+</svg>
+{{ end }}
+
+{{ define "icon_chevron" }}
+<svg class="chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M4 6l4 4 4-4"/>
+</svg>
+{{ end }}
+
+{{ define "icon_moon" }}
+<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>
+</svg>
+{{ end }}
+
+{{ define "icon_sun" }}
+<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" focusable="false">
+  <circle cx="12" cy="12" r="4"/>
+  <path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/>
+</svg>
+{{ end }}
+
+{{ define "icon_check" }}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M5 12.5l4.5 4.5L19 7.5"/>
+</svg>
+{{ end }}
+
+{{ define "icon_alert" }}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M12 8v5M12 16.5v.5"/>
+  <path d="M10.3 3.9L2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>
+</svg>
+{{ end }}
+
+{{ define "icon_truck" }}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M3 6h11v10H3zM14 10h4l3 3v3h-7z"/>
+  <circle cx="7" cy="17.5" r="1.8"/><circle cx="17.5" cy="17.5" r="1.8"/>
+</svg>
+{{ end }}
+
+{{ define "icon_return" }}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>
+</svg>
+{{ end }}
+
+{{ define "icon_bag_empty" }}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+  <path d="M5 8h14l-1.2 11.1a2 2 0 0 1-2 1.9H8.2a2 2 0 0 1-2-1.9L5 8z"/>
+  <path d="M9 10V7a3 3 0 0 1 6 0v3"/><path d="M9.5 15h5"/>
+</svg>
+{{ end }}
