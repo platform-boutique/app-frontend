@@ -39,21 +39,24 @@ func assertContains(t *testing.T, html string, wants ...string) {
 }
 
 func TestTemplates_Home(t *testing.T) {
-	type productView struct {
-		Item  *pb.Product
-		Price *pb.Money
-	}
+	params := browseParams{Sort: "name", Page: 1}
 	html := renderPage(t, "home", map[string]interface{}{
 		"show_currency": true,
 		"currencies":    []string{"USD", "EUR"},
-		"products":      []productView{{sampleProduct("MUG1"), &pb.Money{CurrencyCode: "USD", Units: 12}}},
+		"products":      []productCard{{Item: sampleProduct("MUG1"), Price: &pb.Money{CurrencyCode: "USD", Units: 12}, Image: "/x.webp", DeptName: "Kitchen"}},
+		"total":         1,
+		"browse":        params,
+		"sort_options":  sortOptions,
+		"pagination":    buildPagination(params, 1),
+		"categories":    []*pb.Category{{Id: "kitchen", Name: "Kitchen", ProductCount: 1}},
 		"cart_size":     2,
-		"ad":            &pb.Ad{RedirectUrl: "/product/MUG1", Text: "Mugs on sale"},
+		"ad":            &pb.Ad{RedirectUrl: "/?category=kitchen", Text: "Mugs on sale"},
 	})
 	assertContains(t, html,
 		"<title>"+brand.Name, `href="/product/MUG1"`, `id="currency_form"`, `name="currency_code"`,
-		`action="/setCurrency"`, `id="theme-toggle"`, `class="cart-count"`, "Mugs on sale", `id="main"`)
-	for _, gone := range []string{"Boutique", "Cymbal", "Hipster", "Google", "googleapis", "bootstrapcdn"} {
+		`action="/setCurrency"`, `id="theme-toggle"`, `class="cart-count"`, "Mugs on sale", `id="main"`,
+		`href="/?category=kitchen"`, `id="catalog-results"`, "/static/js/htmx.min.js")
+	for _, gone := range []string{"Boutique", "Cymbal", "Hipster", "Google", "googleapis", "bootstrapcdn", "unpkg", "cdn."} {
 		if strings.Contains(html, gone) {
 			t.Errorf("home page still contains %q", gone)
 		}
@@ -62,12 +65,9 @@ func TestTemplates_Home(t *testing.T) {
 
 func TestTemplates_Product(t *testing.T) {
 	html := renderPage(t, "product", map[string]interface{}{
-		"show_currency": true,
-		"currencies":    []string{"USD"},
-		"product": struct {
-			Item  *pb.Product
-			Price *pb.Money
-		}{sampleProduct("MUG1"), &pb.Money{CurrencyCode: "USD", Units: 12}},
+		"show_currency":   true,
+		"currencies":      []string{"USD"},
+		"product":         productPage{Item: sampleProduct("MUG1"), Price: &pb.Money{CurrencyCode: "USD", Units: 12}, Images: []string{"/a.webp"}, Stock: stockInfo{N: 20}},
 		"recommendations": []*pb.Product{sampleProduct("JAR2")},
 		"cart_size":       0,
 	})

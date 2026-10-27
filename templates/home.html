@@ -2,6 +2,8 @@
 {{ template "header" . }}
 <main id="main" class="home">
 
+  {{ $landing := and (not $.browse.Category) (not $.browse.Query) (eq $.browse.Page 1) }}
+  {{ if $landing }}
   <section class="hero container" aria-labelledby="hero-title">
     <div class="hero-card">
       <div class="hero-copy">
@@ -14,30 +16,26 @@
     </div>
   </section>
 
-  <section class="section container" id="products" aria-labelledby="products-title">
+  {{ template "department_tiles" . }}
+  {{ end }}
+
+  <section class="section container{{ if not $landing }} section-first{{ end }}" id="products" aria-labelledby="products-title">
+    {{ if not $landing }}
+    <nav class="breadcrumbs" aria-label="Breadcrumb">
+      <ol>
+        <li><a href="{{ $.baseUrl }}/">Shop</a></li>
+        <li aria-current="page">{{ with $.category }}{{ .Name }}{{ else }}{{ if $.browse.Query }}Search{{ else }}All products{{ end }}{{ end }}</li>
+      </ol>
+    </nav>
+    {{ end }}
     <div class="section-head">
-      <h2 id="products-title">Our products</h2>
-      <p>{{ len $.products }} item{{ if ne (len $.products) 1 }}s{{ end }}</p>
+      {{ if $landing }}<h2 id="products-title">Our products</h2>
+      {{ else }}<h1 id="products-title">{{ with $.category }}{{ .Name }}{{ else }}{{ if $.browse.Query }}Search results{{ else }}All products{{ end }}{{ end }}</h1>{{ end }}
+      {{ with $.category }}{{ with .Description }}<p>{{ . }}</p>{{ end }}{{ end }}
     </div>
 
     {{ template "catalog_toolbar" . }}
-
-    <ul class="product-grid">
-      {{ range $.products }}
-      <li class="product-card">
-        <div class="media">
-          <img loading="lazy" src="{{ $.baseUrl }}{{ .Item.Picture }}" alt="{{ .Item.Name }}" width="800" height="800">
-        </div>
-        <div class="product-card-meta">
-          {{ with .Item.Categories }}<span class="product-card-category">{{ index . 0 }}</span>{{ end }}
-          <a class="product-card-link" href="{{ $.baseUrl }}/product/{{ .Item.Id }}">{{ .Item.Name }}</a>
-          <span class="product-card-price">{{ renderMoney .Price }}</span>
-        </div>
-      </li>
-      {{ end }}
-    </ul>
-
-    {{ template "catalog_pagination" . }}
+    {{ template "catalog_results" . }}
   </section>
 
   {{ if $.ad }}{{ template "text_ad" $ }}{{ end }}

@@ -41,6 +41,10 @@ func getTemplates() *template.Template {
 			Funcs(template.FuncMap{
 				"renderMoney":        renderMoney,
 				"renderCurrencyLogo": renderCurrencyLogo,
+				"cardData":           cardData,
+				"ratingPct":          ratingPct,
+				"fmtRating":          fmtRating,
+				"add1":               func(i int) int { return i + 1 },
 			}).ParseGlob(path))
 	})
 	return tmpl
@@ -48,30 +52,35 @@ func getTemplates() *template.Template {
 
 func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
-	log.WithField("currency", currentCurrency(r)).Info("home")
+	params := parseBrowseParams(r)
+	fragment := isFragmentRequest(r)
+	log.WithField("currency", currentCurrency(r)).WithField("category", params.Category).
+		WithField("page", params.Page).WithField("fragment", fragment).Info("home")
 
-	// fetch currencies, products, and cart in parallel
+	// categories, currencies and cart in parallel; the fragment needs neither currencies nor cart
 	var (
 		currencies []string
-		products   []*pb.Product
+		cats       []*pb.Category
 		cart       []*pb.CartItem
 		currErr    error
-		prodErr    error
+		catErr     error
 		cartErr    error
 	)
 	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
-	go func() { defer wg.Done(); products, prodErr = fe.getProducts(r.Context()) }()
-	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); cats, catErr = fe.listCategories(r.Context()) }()
+	if !fragment {
+		wg.Add(2)
+		go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
+		go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+	}
 	wg.Wait()
 
+	if catErr != nil {
+		log.WithField("error", catErr).Warn("failed to list categories")
+	}
 	if currErr != nil {
 		renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
-		return
-	}
-	if prodErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(prodErr, "could not retrieve products"), http.StatusInternalServerError)
 		return
 	}
 	if cartErr != nil {
@@ -79,9 +88,10 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type productView struct {
-		Item  *pb.Product
-		Price *pb.Money
+	products, total, err := fe.browse(r.Context(), &params, cats)
+	if err != nil {
+		renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve products"), http.StatusInternalServerError)
+		return
 	}
 
 	// convert all product prices in parallel
@@ -100,22 +110,35 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	ps := make([]productView, len(products))
+	ps := make([]productCard, len(products))
 	for i, p := range products {
 		if prices[i].err != nil {
 			renderHTTPError(log, r, w, errors.Wrapf(prices[i].err, "failed to do currency conversion for product %s", p.GetId()), http.StatusInternalServerError)
 			return
 		}
-		ps[i] = productView{p, prices[i].price}
+		ps[i] = productCard{Item: p, Price: prices[i].price, Image: cardImage(p), DeptName: deptName(cats, p.GetDepartment()), Stock: stockOf(p)}
 	}
 
-	if err := getTemplates().ExecuteTemplate(w, "home", injectCommonTemplateData(r, map[string]interface{}{
+	data := map[string]interface{}{
 		"show_currency": true,
 		"currencies":    currencies,
 		"products":      ps,
+		"total":         total,
+		"categories":    cats,
+		"browse":        params,
+		"category":      findCategory(cats, params.Category),
+		"sort_options":  sortOptions,
+		"pagination":    buildPagination(params, total),
 		"cart_size":     cartSize(cart),
-		"ad":            fe.chooseAd(r.Context(), []string{}, log),
-	})); err != nil {
+	}
+	name := "home"
+	if fragment {
+		name = "catalog_results"
+		w.Header().Set("Vary", "HX-Request")
+	} else {
+		data["ad"] = fe.chooseAd(r.Context(), []string{}, log)
+	}
+	if err := getTemplates().ExecuteTemplate(w, name, injectCommonTemplateData(r, data)); err != nil {
 		log.Error(err)
 	}
 }
@@ -162,9 +185,17 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 	var (
 		price           *pb.Money
 		recommendations []*pb.Product
+		cats            []*pb.Category
 		priceErr        error
 	)
-	wg.Add(2)
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		var err error
+		if cats, err = fe.listCategories(r.Context()); err != nil {
+			log.WithField("error", err).Warn("failed to list categories")
+		}
+	}()
 	go func() {
 		defer wg.Done()
 		price, priceErr = fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))
@@ -184,16 +215,14 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	product := struct {
-		Item  *pb.Product
-		Price *pb.Money
-	}{p, price}
+	product := productPage{Item: p, Price: price, Images: productImages(p), Category: findCategory(cats, p.GetDepartment()), Stock: stockOf(p)}
 
 	if err := getTemplates().ExecuteTemplate(w, "product", injectCommonTemplateData(r, map[string]interface{}{
 		"ad":              fe.chooseAd(r.Context(), p.Categories, log),
 		"show_currency":   true,
 		"currencies":      currencies,
 		"product":         product,
+		"categories":      cats,
 		"recommendations": recommendations,
 		"cart_size":       cartSize(cart),
 	})); err != nil {

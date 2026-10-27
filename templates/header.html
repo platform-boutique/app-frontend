@@ -22,6 +22,9 @@
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/styles.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/cart.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/order.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/browse.css">
+    {{/* htmx 2.0.11, self-hosted (see README): progressive enhancement of the catalogue toolbar and paging. */}}
+    <script defer src="{{ $.baseUrl }}/static/js/htmx.min.js"></script>
     <link rel="icon" type="image/svg+xml" href="{{ $.baseUrl }}/static/favicon.svg">
 </head>
 
@@ -40,7 +43,7 @@
             <nav class="site-nav" aria-label="Main">
                 <ul>
                     <li><a href="{{ $.baseUrl }}/">Shop</a></li>
-                    <li><a href="{{ $.baseUrl }}/#products">All products</a></li>
+                    <li class="nav-all"><a href="{{ $.baseUrl }}/#products">All products</a></li>
                     {{ template "nav_extra" . }}
                 </ul>
             </nav>

@@ -7,7 +7,7 @@
         {{ range .recommendations }}
         <li class="product-card">
             <div class="media">
-                <img loading="lazy" src="{{ $.baseUrl }}{{ .Picture }}" alt="{{ .Name }}" width="800" height="800">
+                <img loading="lazy" src="{{ $.baseUrl }}{{ or .Thumbnail .Picture }}" alt="{{ .Name }}" width="600" height="600">
             </div>
             <div class="product-card-meta">
                 <a class="product-card-link" href="{{ $.baseUrl }}/product/{{ .Id }}">{{ .Name }}</a>

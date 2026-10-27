@@ -1,14 +1,140 @@
 {{/*
-  Extension points for the catalogue UI (search, category filter, sort, pagination).
-  They render nothing today; the browse work fills them in without touching the
-  layout templates. Each receives the page data (.).
+  Catalogue UI: department nav and tiles, search/sort toolbar, results (grid,
+  empty state, pagination) and the product card. Styles: static/styles/browse.css.
+
+  Progressive enhancement: every control is a plain link or GET form. With htmx
+  loaded, the toolbar form and the pagination links swap only #catalog-results
+  (the server answers HX-Request with the "catalog_results" fragment) and push
+  the URL. Department links are full page loads (they change the heading and tiles).
 */}}
 
-{{/* Extra header navigation links (for example category links), rendered as <li> items. */}}
-{{ define "nav_extra" }}{{ end }}
+{{/* Department links in the header, rendered as <li> items. */}}
+{{ define "nav_extra" }}
+{{ range $.categories }}
+<li><a href="{{ $.baseUrl }}/?category={{ .Id }}"{{ if and $.browse (eq $.browse.Category .Id) }} aria-current="page"{{ end }}>{{ .Name }}</a></li>
+{{ end }}
+{{ end }}
 
-{{/* Toolbar above the home product grid: search box, category filter, sort. */}}
-{{ define "catalog_toolbar" }}{{ end }}
+{{/* Department tiles with product counts (home page, only without a search or category). */}}
+{{ define "department_tiles" }}
+{{ if $.categories }}
+<section class="section container dept-section" aria-labelledby="dept-title">
+  <div class="section-head">
+    <h2 id="dept-title">Shop by department</h2>
+  </div>
+  <ul class="dept-tiles">
+    {{ range $.categories }}
+    <li>
+      <a class="dept-tile dept-{{ .Id }}" href="{{ $.baseUrl }}/?category={{ .Id }}">
+        <span class="dept-name">{{ .Name }}</span>
+        <span class="dept-count">{{ .ProductCount }} product{{ if ne .ProductCount 1 }}s{{ end }}</span>
+      </a>
+    </li>
+    {{ end }}
+  </ul>
+</section>
+{{ end }}
+{{ end }}
 
-{{/* Below the home product grid: pagination. */}}
-{{ define "catalog_pagination" }}{{ end }}
+{{/* Toolbar above the product grid: search box and sort. A GET form that keeps the category. */}}
+{{ define "catalog_toolbar" }}
+<form class="catalog-toolbar" method="get" action="{{ $.baseUrl }}/" role="search"
+  hx-get="{{ $.baseUrl }}/" hx-target="#catalog-results" hx-push-url="true" hx-trigger="submit, change from:#sort">
+  {{ if $.browse.Category }}<input type="hidden" name="category" value="{{ $.browse.Category }}">{{ end }}
+  <div class="field search-field">
+    <label for="q">Search{{ with $.category }} in {{ .Name }}{{ end }}</label>
+    <div class="search-row">
+      <input class="input" type="search" id="q" name="q" value="{{ $.browse.Query }}" maxlength="100"
+        placeholder="Search products, brands, tags" autocomplete="off">
+      <button type="submit" class="btn btn-primary">Search</button>
+    </div>
+  </div>
+  <div class="field sort-field">
+    <label for="sort">Sort by</label>
+    <span class="select-wrap">
+      <select class="select" id="sort" name="sort">
+        {{ range $.sort_options }}
+        <option value="{{ .Value }}"{{ if eq .Value $.browse.Sort }} selected{{ end }}>{{ .Label }}</option>
+        {{ end }}
+      </select>
+      {{ template "icon_chevron" . }}
+    </span>
+  </div>
+</form>
+{{ end }}
+
+{{/* The swappable results area: count, grid or empty state, pagination. Also the htmx fragment. */}}
+{{ define "catalog_results" }}
+<div id="catalog-results" class="catalog-results" aria-live="polite">
+  <p class="result-count">
+    {{ if $.total }}{{ $.total }} product{{ if ne $.total 1 }}s{{ end }}{{ else }}No products{{ end }}
+    {{- with $.browse.Query }} for &ldquo;{{ . }}&rdquo;{{ end }}
+    {{- with $.category }} in {{ .Name }}{{ end }}
+    {{- if gt $.pagination.Pages 1 }} &middot; page {{ $.pagination.Page }} of {{ $.pagination.Pages }}{{ end }}
+  </p>
+  {{ if $.products }}
+  <ul class="product-grid">
+    {{ range $.products }}{{ template "product_card" (cardData $ .) }}{{ end }}
+  </ul>
+  {{ else }}
+  <div class="empty-state">
+    <div class="notice-icon is-neutral">{{ template "icon_bag_empty" . }}</div>
+    <h3>Nothing found</h3>
+    <p class="muted">
+      {{ if and $.browse.Category (not $.category) }}This department does not exist.
+      {{ else if $.browse.Query }}No product matches your search. Try another word or browse all products.
+      {{ else }}There are no products here yet.{{ end }}
+    </p>
+    <a class="btn btn-secondary" href="{{ $.baseUrl }}/#products">Show all products</a>
+  </div>
+  {{ end }}
+  {{ template "catalog_pagination" . }}
+</div>
+{{ end }}
+
+{{/* Below the product grid: numbered pagination that keeps the other parameters. */}}
+{{ define "catalog_pagination" }}
+{{ with $.pagination }}{{ if gt .Pages 1 }}
+<nav class="pagination" aria-label="Pages" hx-target="#catalog-results" hx-push-url="true">
+  {{ if .PrevURL }}<a class="page-link page-prev" href="{{ .PrevURL }}" hx-get="{{ .PrevURL }}" rel="prev">&larr; Prev</a>
+  {{ else }}<span class="page-link page-prev is-disabled" aria-hidden="true">&larr; Prev</span>{{ end }}
+  <ol>
+    {{ range .Links }}
+    {{ if .Gap }}<li class="page-gap" aria-hidden="true">&hellip;</li>
+    {{ else if .Current }}<li><span class="page-link is-current" aria-current="page">{{ .N }}</span></li>
+    {{ else }}<li><a class="page-link" href="{{ .URL }}" hx-get="{{ .URL }}" aria-label="Page {{ .N }}">{{ .N }}</a></li>{{ end }}
+    {{ end }}
+  </ol>
+  {{ if .NextURL }}<a class="page-link page-next" href="{{ .NextURL }}" hx-get="{{ .NextURL }}" rel="next">Next &rarr;</a>
+  {{ else }}<span class="page-link page-next is-disabled" aria-hidden="true">Next &rarr;</span>{{ end }}
+</nav>
+{{ end }}{{ end }}
+{{ end }}
+
+{{/* One product card. Data: .root (page data) and .card (productCard). */}}
+{{ define "product_card" }}
+{{ $root := .root }}{{ with .card }}
+<li class="product-card">
+  <div class="media">
+    <img loading="lazy" src="{{ $root.baseUrl }}{{ .Image }}" alt="{{ .Item.Name }}" width="600" height="600">
+    {{ if .Stock.Out }}<span class="stock-badge is-out">Out of stock</span>
+    {{ else if .Stock.Low }}<span class="stock-badge is-low">Only {{ .Stock.N }} left</span>{{ end }}
+  </div>
+  <div class="product-card-meta">
+    <span class="product-card-category">{{ with .DeptName }}{{ . }}{{ end }}{{ if and .DeptName .Item.Brand }} &middot; {{ end }}{{ .Item.Brand }}</span>
+    <a class="product-card-link" href="{{ $root.baseUrl }}/product/{{ .Item.Id }}">{{ .Item.Name }}</a>
+    {{ template "stars" .Item.Rating }}
+    <span class="product-card-price">{{ renderMoney .Price }}</span>
+  </div>
+</li>
+{{ end }}
+{{ end }}
+
+{{/* Star rating for a 0-5 value; renders nothing for 0. */}}
+{{ define "stars" }}
+{{ if gt . 0.0 }}
+<span class="stars" role="img" aria-label="Rated {{ fmtRating . }} out of 5">
+  <span class="stars-fill" style="width: {{ ratingPct . }}"></span>
+</span>
+{{ end }}
+{{ end }}

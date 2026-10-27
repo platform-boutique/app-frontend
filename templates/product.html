@@ -4,24 +4,50 @@
   <nav class="breadcrumbs container" aria-label="Breadcrumb">
     <ol>
       <li><a href="{{ $.baseUrl }}/">Shop</a></li>
+      {{ with $.product.Category }}<li><a href="{{ $.baseUrl }}/?category={{ .Id }}">{{ .Name }}</a></li>{{ end }}
       <li aria-current="page">{{ $.product.Item.Name }}</li>
     </ol>
   </nav>
 
   <div class="product-detail container">
-    <div class="media">
-      <img src="{{ $.baseUrl }}{{ $.product.Item.Picture }}" alt="{{ $.product.Item.Name }}" width="800" height="800">
+    <div class="gallery" data-gallery>
+      {{ with $.product.Images }}
+      <div class="media gallery-main">
+        <img src="{{ $.baseUrl }}{{ index . 0 }}" alt="{{ $.product.Item.Name }}" width="1000" height="1000" data-gallery-main>
+      </div>
+      {{ if gt (len .) 1 }}
+      <ul class="gallery-thumbs" aria-label="More images">
+        {{ range $i, $img := . }}
+        <li>
+          <a class="gallery-thumb" href="{{ $.baseUrl }}{{ $img }}" data-gallery-src="{{ $.baseUrl }}{{ $img }}"{{ if eq $i 0 }} aria-current="true"{{ end }}>
+            <img loading="lazy" src="{{ $.baseUrl }}{{ $img }}" alt="{{ $.product.Item.Name }}, image {{ add1 $i }}" width="1000" height="1000">
+          </a>
+        </li>
+        {{ end }}
+      </ul>
+      {{ end }}
+      {{ end }}
     </div>
 
     <div class="product-info">
+      {{ with $.product.Item.Brand }}<p class="product-brand">{{ . }}</p>{{ end }}
       <h1>{{ $.product.Item.Name }}</h1>
+      {{ if gt $.product.Item.Rating 0.0 }}
+      <p class="product-rating">{{ template "stars" $.product.Item.Rating }}
+        <span>{{ fmtRating $.product.Item.Rating }} out of 5{{ if gt $.product.Item.ReviewCount 0 }} &middot; {{ $.product.Item.ReviewCount }} review{{ if ne $.product.Item.ReviewCount 1 }}s{{ end }}{{ end }}</span>
+      </p>
+      {{ end }}
       <p class="product-price">{{ renderMoney $.product.Price }}</p>
-      {{ with $.product.Item.Categories }}
-      <ul class="tags" aria-label="Categories">
-        {{ range . }}<li class="tag">{{ . }}</li>{{ end }}
+      <p class="stock-status{{ if $.product.Stock.Out }} is-out{{ else if $.product.Stock.Low }} is-low{{ else }} is-in{{ end }}">
+        {{ if $.product.Stock.Out }}Out of stock{{ else if $.product.Stock.Low }}Only {{ $.product.Stock.N }} left in stock{{ else }}In stock{{ end }}
+      </p>
+      <p class="product-description">{{ $.product.Item.Description }}</p>
+
+      {{ with $.product.Item.Tags }}
+      <ul class="tags" aria-label="Tags">
+        {{ range . }}<li><a class="tag" href="{{ $.baseUrl }}/?q={{ . }}">{{ . }}</a></li>{{ end }}
       </ul>
       {{ end }}
-      <p class="product-description">{{ $.product.Item.Description }}</p>
 
       <form method="POST" action="{{ $.baseUrl }}/cart" class="add-to-cart">
         <input type="hidden" name="product_id" value="{{ $.product.Item.Id }}">
@@ -39,7 +65,11 @@
             {{ template "icon_chevron" . }}
           </span>
         </div>
+        {{ if $.product.Stock.Out }}
+        <button type="submit" class="btn btn-primary" disabled>Out of stock</button>
+        {{ else }}
         <button type="submit" class="btn btn-primary">Add to cart</button>
+        {{ end }}
       </form>
 
       <ul class="product-perks">
@@ -52,5 +82,6 @@
   {{ if $.recommendations }}{{ template "recommendations" $ }}{{ end }}
   {{ if $.ad }}{{ template "text_ad" $ }}{{ end }}
 </main>
+<script defer src="{{ $.baseUrl }}/static/js/gallery.js"></script>
 {{ template "footer" . }}
 {{ end }}
