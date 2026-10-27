@@ -28,12 +28,6 @@ func (fe *frontendServer) getCurrencies(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (fe *frontendServer) getProducts(ctx context.Context) ([]*pb.Product, error) {
-	resp, err := pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).
-		ListProducts(ctx, &pb.Empty{})
-	return resp.GetProducts(), err
-}
-
 func (fe *frontendServer) getProduct(ctx context.Context, id string) (*pb.Product, error) {
 	resp, err := pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).
 		GetProduct(ctx, &pb.GetProductRequest{Id: id})
