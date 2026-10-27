@@ -16,7 +16,8 @@ import (
 
 const (
 	catalogPageSize = 24
-	maxQueryLen     = 100
+	maxQueryLen     = 100 // runes, same as the input's maxlength
+	maxCategoryLen  = 64  // runes
 	lowStockLimit   = 5
 )
 
@@ -42,13 +43,10 @@ type browseParams struct {
 func parseBrowseParams(r *http.Request) browseParams {
 	q := r.URL.Query()
 	p := browseParams{
-		Category: strings.ToLower(strings.TrimSpace(q.Get("category"))),
-		Query:    strings.TrimSpace(q.Get("q")),
+		Category: cleanText(strings.ToLower(q.Get("category")), maxCategoryLen),
+		Query:    cleanText(q.Get("q"), maxQueryLen),
 		Sort:     sortOptions[0].Value,
 		Page:     1,
-	}
-	if len(p.Query) > maxQueryLen {
-		p.Query = p.Query[:maxQueryLen]
 	}
 	for _, o := range sortOptions {
 		if q.Get("sort") == o.Value {
@@ -59,6 +57,17 @@ func parseBrowseParams(r *http.Request) browseParams {
 		p.Page = n
 	}
 	return p
+}
+
+// cleanText makes user input safe to send over gRPC (proto strings must be valid
+// UTF-8): invalid bytes are dropped, the text is cut to max runes (never inside a
+// rune) and trimmed.
+func cleanText(s string, max int) string {
+	s = strings.ToValidUTF8(s, "")
+	if r := []rune(s); len(r) > max {
+		s = string(r[:max])
+	}
+	return strings.TrimSpace(s)
 }
 
 func (p browseParams) sortEnum() pb.ProductSort {

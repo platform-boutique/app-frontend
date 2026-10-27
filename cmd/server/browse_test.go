@@ -6,9 +6,11 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
@@ -415,4 +417,31 @@ func TestProduct_LowStockAndNoRating(t *testing.T) {
 func TestProduct_InStock(t *testing.T) {
 	html := serve(newFakeFrontend(t, sampleCatalog()), "/product/pan-05", false).Body.String()
 	assertContains(t, html, "In stock", `<a href="/?category=kitchen">Kitchen</a>`, "Panco", "Add to cart</button>")
+}
+
+func TestHome_SearchInputIsAlwaysValidUTF8(t *testing.T) {
+	cyr := strings.Repeat("ш", 100) // 100 characters, 200 bytes: what the input's maxlength allows
+	cases := map[string]string{
+		"invalid byte":           "/?q=%ff",
+		"invalid in the middle":  "/?q=a%ffb",
+		"long cyrillic":          "/?q=" + url.QueryEscape(cyr),
+		"too long cyrillic":      "/?q=" + url.QueryEscape(cyr+cyr),
+		"cut would split a rune": "/?q=" + strings.Repeat("a", 99) + "%C3%A9",
+		"invalid category":       "/?category=%ff",
+	}
+	for name, target := range cases {
+		cat := sampleCatalog()
+		rr := serve(newFakeFrontend(t, cat), target, false)
+		if rr.Code != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", name, rr.Code)
+			continue
+		}
+		if q := cat.lastReq.GetQuery(); !utf8.ValidString(q) || utf8.RuneCountInString(q) > maxQueryLen {
+			t.Errorf("%s: query sent to the catalog is invalid or too long (%d runes)", name, utf8.RuneCountInString(q))
+		}
+	}
+	p := parseBrowseParams(httptest.NewRequest(http.MethodGet, "/?q="+url.QueryEscape(cyr+cyr), nil))
+	if utf8.RuneCountInString(p.Query) != maxQueryLen || p.Query != cyr {
+		t.Errorf("query not cut to %d runes: %d runes", maxQueryLen, utf8.RuneCountInString(p.Query))
+	}
 }
