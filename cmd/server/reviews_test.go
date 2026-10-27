@@ -136,6 +136,10 @@ func do(fe *frontendServer, method, target, body string, header map[string]strin
 	r.HandleFunc("/", fe.homeHandler).Methods(http.MethodGet)
 	r.HandleFunc("/product/{id}", fe.productHandler).Methods(http.MethodGet)
 	r.HandleFunc("/product/{id}/reviews", fe.postReviewHandler).Methods(http.MethodPost)
+	r.HandleFunc("/cart", fe.viewCartHandler).Methods(http.MethodGet)
+	r.HandleFunc("/cart", fe.addToCartHandler).Methods(http.MethodPost)
+	r.HandleFunc("/cart/empty", fe.emptyCartHandler).Methods(http.MethodPost)
+	r.HandleFunc("/cart/checkout", fe.placeOrderHandler).Methods(http.MethodPost)
 	req := requestWithContext(method, target, body)
 	for k, v := range header {
 		req.Header.Set(k, v)

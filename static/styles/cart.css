@@ -2,6 +2,9 @@
 
 .cart-empty { max-width: 640px; padding-block: var(--space-7) 0; }
 
+.cart-stale { padding-top: var(--space-5); }
+.cart-stale form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+
 .cart-layout {
   display: grid;
   grid-template-columns: 1fr;

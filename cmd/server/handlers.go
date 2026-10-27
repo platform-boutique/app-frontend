@@ -142,7 +142,7 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		"category":      findCategory(cats, params.Category),
 		"sort_options":  sortOptions,
 		"pagination":    buildPagination(params, total),
-		"cart_size":     cartSize(cart),
+		"cart_size":     fe.headerCartSize(r.Context(), log, cart),
 	}
 	name := "home"
 	if fragment {
@@ -259,7 +259,7 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 		"categories":      cats,
 		"recommendations": recommendations,
 		"reviews":         reviews,
-		"cart_size":       cartSize(cart),
+		"cart_size":       fe.headerCartSize(r.Context(), log, cart),
 	})); err != nil {
 		log.Println(err)
 	}
@@ -333,25 +333,42 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// recommendations and shipping quote are independent, run in parallel
+	// products of the cart lines; lines whose product left the catalog are skipped
+	lines, stale, err := fe.liveCartLines(r.Context(), log, cart)
+	if err != nil {
+		renderHTTPError(log, r, w, err, http.StatusInternalServerError)
+		return
+	}
+	liveCart := linesItems(lines)
+
+	// recommendations, shipping quote and price conversions are independent, run in parallel
 	var (
 		recommendations []*pb.Product
 		shippingCost    *pb.Money
 		shippingErr     error
 	)
+	prices := make([]*pb.Money, len(lines))
+	priceErrs := make([]error, len(lines))
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
 		var err error
-		recommendations, err = fe.getRecommendations(r.Context(), sessionID(r), cartIDs(cart))
+		recommendations, err = fe.getRecommendations(r.Context(), sessionID(r), cartIDs(liveCart))
 		if err != nil {
 			log.WithField("error", err).Warn("failed to get product recommendations")
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		shippingCost, shippingErr = fe.getShippingQuote(r.Context(), cart, currentCurrency(r))
+		shippingCost, shippingErr = fe.getShippingQuote(r.Context(), liveCart, currentCurrency(r))
 	}()
+	for i, l := range lines {
+		wg.Add(1)
+		go func(i int, p *pb.Product) {
+			defer wg.Done()
+			prices[i], priceErrs[i] = fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))
+		}(i, l.Item)
+	}
 	wg.Wait()
 
 	if shippingErr != nil {
@@ -364,42 +381,15 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		Quantity int32
 		Price    *pb.Money
 	}
-
-	// fetch all products and convert currencies in parallel
-	type itemResult struct {
-		product *pb.Product
-		price   *pb.Money
-		err     error
-	}
-	itemResults := make([]itemResult, len(cart))
-	for i, item := range cart {
-		wg.Add(1)
-		go func(i int, item *pb.CartItem) {
-			defer wg.Done()
-			p, err := fe.getProduct(r.Context(), item.GetProductId())
-			if err != nil {
-				itemResults[i] = itemResult{err: errors.Wrapf(err, "could not retrieve product #%s", item.GetProductId())}
-				return
-			}
-			price, err := fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))
-			if err != nil {
-				itemResults[i] = itemResult{err: errors.Wrapf(err, "could not convert currency for product #%s", item.GetProductId())}
-				return
-			}
-			itemResults[i] = itemResult{product: p, price: price}
-		}(i, item)
-	}
-	wg.Wait()
-
-	items := make([]cartItemView, len(cart))
+	items := make([]cartItemView, len(lines))
 	totalPrice := &pb.Money{CurrencyCode: currentCurrency(r)}
-	for i, res := range itemResults {
-		if res.err != nil {
-			renderHTTPError(log, r, w, res.err, http.StatusInternalServerError)
+	for i, l := range lines {
+		if priceErrs[i] != nil {
+			renderHTTPError(log, r, w, errors.Wrapf(priceErrs[i], "could not convert currency for product #%s", l.Item.GetId()), http.StatusInternalServerError)
 			return
 		}
-		multPrice := money.MultiplySlow(res.price, uint32(cart[i].GetQuantity())) // #nosec G115 -- quantity is a non-negative proto int32
-		items[i] = cartItemView{Item: res.product, Quantity: cart[i].GetQuantity(), Price: multPrice}
+		multPrice := money.MultiplySlow(prices[i], uint32(l.Quantity)) // #nosec G115 -- quantity is a non-negative proto int32
+		items[i] = cartItemView{Item: l.Item, Quantity: l.Quantity, Price: multPrice}
 		totalPrice = money.Must(money.Sum(totalPrice, multPrice))
 	}
 	totalPrice = money.Must(money.Sum(totalPrice, shippingCost))
@@ -408,7 +398,8 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 	if err := getTemplates().ExecuteTemplate(w, "cart", injectCommonTemplateData(r, map[string]interface{}{
 		"currencies":       currencies,
 		"recommendations":  recommendations,
-		"cart_size":        cartSize(cart),
+		"cart_size":        linesSize(lines),
+		"stale_items":      stale,
 		"shipping_cost":    shippingCost,
 		"show_currency":    true,
 		"total_cost":       totalPrice,

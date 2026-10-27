@@ -2,6 +2,18 @@
 {{ template "header" . }}
 <main id="main" class="cart-page">
 
+    {{ if $.stale_items }}
+    <div class="container cart-stale">
+        <div class="form-notice is-danger" role="status">
+            {{ template "icon_alert" . }}
+            <form method="POST" action="{{ $.baseUrl }}/cart/empty">
+                <p>{{ $.stale_items }} item{{ if ne $.stale_items 1 }}s{{ end }} in your cart {{ if eq $.stale_items 1 }}is{{ else }}are{{ end }} no longer sold and {{ if eq $.stale_items 1 }}is{{ else }}are{{ end }} not shown. Empty the cart to remove {{ if eq $.stale_items 1 }}it{{ else }}them{{ end }}.</p>
+                <button class="btn btn-secondary btn-sm" type="submit">Empty cart</button>
+            </form>
+        </div>
+    </div>
+    {{ end }}
+
     {{ if eq (len $.items) 0 }}
     <section class="container cart-empty" aria-labelledby="cart-title">
         <div class="notice">

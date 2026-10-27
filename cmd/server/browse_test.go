@@ -12,7 +12,9 @@ import (
 
 	"github.com/gorilla/mux"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	pb "frontend/genproto"
@@ -39,7 +41,7 @@ func (f *fakeCatalog) GetProduct(_ context.Context, r *pb.GetProductRequest) (*p
 			return p, nil
 		}
 	}
-	return nil, fmt.Errorf("no product %q", r.Id)
+	return nil, status.Errorf(codes.NotFound, "no product %q", r.Id)
 }
 
 // ListProductsFiltered mimics the catalog: filter, sort by name, page (page past the end = empty).
@@ -84,10 +86,31 @@ func (fakeCurrency) Convert(_ context.Context, r *pb.CurrencyConversionRequest) 
 
 type fakeCart struct {
 	pb.UnimplementedCartServiceServer
+	items   []*pb.CartItem
+	added   []*pb.CartItem
+	emptied int
 }
 
-func (fakeCart) GetCart(context.Context, *pb.GetCartRequest) (*pb.Cart, error) {
-	return &pb.Cart{}, nil
+func (f *fakeCart) GetCart(context.Context, *pb.GetCartRequest) (*pb.Cart, error) {
+	return &pb.Cart{Items: f.items}, nil
+}
+
+func (f *fakeCart) AddItem(_ context.Context, r *pb.AddItemRequest) (*pb.Empty, error) {
+	f.added = append(f.added, r.Item)
+	return &pb.Empty{}, nil
+}
+
+func (f *fakeCart) EmptyCart(context.Context, *pb.EmptyCartRequest) (*pb.Empty, error) {
+	f.emptied++
+	return &pb.Empty{}, nil
+}
+
+type fakeShipping struct {
+	pb.UnimplementedShippingServiceServer
+}
+
+func (fakeShipping) GetQuote(context.Context, *pb.GetQuoteRequest) (*pb.GetQuoteResponse, error) {
+	return &pb.GetQuoteResponse{CostUsd: &pb.Money{CurrencyCode: "USD", Units: 5}}, nil
 }
 
 type fakeReco struct {
@@ -109,11 +132,18 @@ func (fakeAds) GetAds(context.Context, *pb.AdRequest) (*pb.AdResponse, error) {
 // newFakeFrontend starts one bufconn gRPC server with all fakes and points every connection at it.
 func newFakeFrontend(t *testing.T, cat *fakeCatalog) *frontendServer {
 	t.Helper()
+	return newFakeFrontendWith(t, cat, &fakeCart{})
+}
+
+// newFakeFrontendWith is newFakeFrontend with a cart the test controls.
+func newFakeFrontendWith(t *testing.T, cat *fakeCatalog, cart *fakeCart) *frontendServer {
+	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
 	pb.RegisterProductCatalogServiceServer(srv, cat)
 	pb.RegisterCurrencyServiceServer(srv, fakeCurrency{})
-	pb.RegisterCartServiceServer(srv, fakeCart{})
+	pb.RegisterCartServiceServer(srv, cart)
+	pb.RegisterShippingServiceServer(srv, fakeShipping{})
 	pb.RegisterRecommendationServiceServer(srv, fakeReco{})
 	pb.RegisterAdServiceServer(srv, fakeAds{})
 	go func() { _ = srv.Serve(lis) }()
@@ -125,7 +155,7 @@ func newFakeFrontend(t *testing.T, cat *fakeCatalog) *frontendServer {
 	}
 	t.Cleanup(func() { _ = conn.Close(); srv.Stop() })
 	return &frontendServer{productCatalogSvcConn: conn, currencySvcConn: conn, cartSvcConn: conn,
-		recommendationSvcConn: conn, adSvcConn: conn}
+		recommendationSvcConn: conn, adSvcConn: conn, shippingSvcConn: conn}
 }
 
 // sampleCatalog: 30 kitchen products (one out of stock, one low), 2 beauty products.
