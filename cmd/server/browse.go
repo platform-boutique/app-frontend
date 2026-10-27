@@ -199,11 +199,15 @@ func buildPagination(p browseParams, total int) pagination {
 }
 
 func (fe *frontendServer) listCategories(ctx context.Context) ([]*pb.Category, error) {
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	resp, err := pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).ListCategories(ctx, &pb.Empty{})
 	return resp.GetCategories(), err
 }
 
 func (fe *frontendServer) listProductsFiltered(ctx context.Context, p browseParams) (*pb.ListProductsResponse, error) {
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	return pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).ListProductsFiltered(ctx, &pb.ListProductsRequest{
 		Department: p.Category,
 		Query:      p.Query,

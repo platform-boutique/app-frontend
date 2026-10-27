@@ -475,8 +475,10 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	orderCtx, cancelOrder := context.WithTimeout(r.Context(), checkoutTimeout)
+	defer cancelOrder()
 	order, err := pb.NewCheckoutServiceClient(fe.checkoutSvcConn).
-		PlaceOrder(r.Context(), &pb.PlaceOrderRequest{
+		PlaceOrder(orderCtx, &pb.PlaceOrderRequest{
 			Email: payload.Email,
 			CreditCard: &pb.CreditCardInfo{
 				CreditCardNumber:          payload.CcNumber,
@@ -596,6 +598,9 @@ func (fe *frontendServer) chooseAd(ctx context.Context, ctxKeys []string, log lo
 	ads, err := fe.getAd(ctx, ctxKeys)
 	if err != nil {
 		log.WithField("error", err).Warn("failed to retrieve ads")
+		return nil
+	}
+	if len(ads) == 0 {
 		return nil
 	}
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(ads))))

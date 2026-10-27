@@ -124,17 +124,17 @@ func main() {
 	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_SERVICE_ADDR")
 	mustMapEnv(&svc.adSvcAddr, "AD_SERVICE_ADDR")
 
-	mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
-	mustConnGRPC(ctx, &svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
-	mustConnGRPC(ctx, &svc.cartSvcConn, svc.cartSvcAddr)
-	mustConnGRPC(ctx, &svc.recommendationSvcConn, svc.recommendationSvcAddr)
-	mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
-	mustConnGRPC(ctx, &svc.checkoutSvcConn, svc.checkoutSvcAddr)
-	mustConnGRPC(ctx, &svc.adSvcConn, svc.adSvcAddr)
+	mustConnGRPC(&svc.currencySvcConn, svc.currencySvcAddr)
+	mustConnGRPC(&svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
+	mustConnGRPC(&svc.cartSvcConn, svc.cartSvcAddr)
+	mustConnGRPC(&svc.recommendationSvcConn, svc.recommendationSvcAddr)
+	mustConnGRPC(&svc.shippingSvcConn, svc.shippingSvcAddr)
+	mustConnGRPC(&svc.checkoutSvcConn, svc.checkoutSvcAddr)
+	mustConnGRPC(&svc.adSvcConn, svc.adSvcAddr)
 
 	// review-service is optional: lazy connection, pages render without ratings while it is down
 	if svc.reviewSvcAddr = reviewAddrFromEnv(); svc.reviewSvcAddr != "" {
-		mustConnGRPC(ctx, &svc.reviewSvcConn, svc.reviewSvcAddr)
+		mustConnGRPC(&svc.reviewSvcConn, svc.reviewSvcAddr)
 		svc.reviews = pb.NewReviewServiceClient(svc.reviewSvcConn)
 	} else {
 		log.Info("REVIEW_SERVICE_ADDR is empty: ratings and reviews are off")
@@ -189,10 +189,10 @@ func mustMapEnv(target *string, envKey string) {
 	*target = v
 }
 
-func mustConnGRPC(ctx context.Context, conn **grpc.ClientConn, addr string) {
+// mustConnGRPC creates a lazy client connection (no dial here); the deadline of each
+// call is set where it is made, see rpc.go.
+func mustConnGRPC(conn **grpc.ClientConn, addr string) {
 	var err error
-	_, cancel := context.WithTimeout(ctx, time.Second*3)
-	defer cancel()
 	*conn, err = grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
