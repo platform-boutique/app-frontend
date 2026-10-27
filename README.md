@@ -14,7 +14,7 @@ Part of the [platform-demo](https://github.com/platform-boutique) platform — m
 | **Metrics** | Pushed over OTLP/gRPC (Prometheus registry bridged into OpenTelemetry); `/metrics` on `9464` is still served for debugging |
 | **Health** | `GET /_healthz` → `200 ok` — static, no dependency checks |
 | **State** | None server-side; session id lives in a browser cookie, carts live in `cart-service` |
-| **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service`; optional: `review-service` (ratings and reviews, see below) |
+| **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service`; optional: `review-service` (ratings and reviews, see below), `order-service` (order history and tracking, see "Orders") |
 | **Called by** | Browsers / ingress / load generators |
 | **Not used** | `payment-service` and `email-service` are only reached via `checkout-service`. `shopping-assistant-service` is **not** wired in |
 
@@ -30,6 +30,8 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/cart` | GET, HEAD | View cart — items, shipping estimate, total, recommendations. Lines whose product is no longer in the catalog (a cart outlives the catalog) are skipped, listed in a notice with an Empty cart button, logged once per request and not counted in the header |
 | `/cart` | POST | Add item (form fields `product_id`, `quantity` 1-10). `422` with a readable message when the product is out of stock or quantity plus what is already in the cart exceeds the stock; unknown product: `404`. Stock is only checked here, orders do not decrement it yet |
 | `/cart/empty` | POST | Empty the cart |
+| `/orders` | GET, HEAD | Order history of the visitor's session: confirmed orders only (`ListOrders` with `placed_only`), newest first, 10 per page (`?page=`, a page past the end shows the last page). Each row: short id, date, status badge, item count, thumbnails, total, link. Friendly empty state. Order service down: `503` page "Orders are not available right now"; `ORDER_SERVICE_ADDR` empty: `404` |
+| `/orders/{id}` | GET, HEAD | Tracking page of one order of the session (`GetOrder` with the session as guard): status badge, stage tracker, items, shipping address, tracking number, totals. An unknown, somebody else's or malformed id gives the same `404` page. With `HX-Request` it returns only the live part (badge, tracker, tracking number); `200` while the order is on its way, `286` once it is delivered or failed (htmx stops polling) |
 | `/cart/checkout` | POST | Validate the form, call `checkout-service.PlaceOrder`, render the order page. The country is a dropdown (the names shipping-service accepts, United States first and preselected); the State field exists only for the United States: `static/js/checkout.js` hides and disables it for any other country, and the server ignores a state sent for another country, normalises `US`/`USA` to `United States` and requires a state for it |
 | `/setCurrency` | POST | Set the display currency cookie (`currency_code`) |
 | `/logout` | GET | Expire all cookies and redirect to `/` |
@@ -49,6 +51,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | Post review | product-catalog (get, the product must exist), review (`AddReview`, 2 s deadline) |
 | Cart | cart (get), shipping (quote with nil address), currency, product-catalog, recommendation |
 | Checkout | checkout (PlaceOrder), then recommendation + currency for the confirmation page |
+| Orders / order tracking | order (`ListOrders` / `GetOrder`, 1.5 s deadline) and, for the header navigation only, the cached catalog category list |
 
 ### Errors
 
@@ -88,6 +91,7 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 | `CHECKOUT_SERVICE_ADDR` | **Yes** | — | e.g. `checkout-service:5050` |
 | `SHIPPING_SERVICE_ADDR` | **Yes** | — | e.g. `shipping-service:50051` |
 | `AD_SERVICE_ADDR` | **Yes** | — | e.g. `ad-service:9555` |
+| `ORDER_SERVICE_ADDR` | No | `order-service:8085` | `host:port` of order-service (gRPC). Optional: lazy connection; while it is unreachable only `/orders` and `/orders/{id}` answer `503`. Set to an empty string to switch order history and tracking off (routes `404`, no Orders link, no "Track your order" button) |
 | `REVIEW_SERVICE_ADDR` | No | `review-service:8084` | `host:port` of review-service (gRPC). Optional: if it is unreachable the pages render without stars and without reviews (see "Ratings and reviews"). Set to an empty string to switch ratings and reviews off completely |
 | `PORT` | No | `8080` | HTTP listen port |
 | `LISTEN_ADDR` | No | `` (all interfaces) | Bind address; leave empty in containers |
@@ -125,6 +129,18 @@ Notes:
 - **Page titles:** `<page> | brand` (product name, department, "Search results", "Cart", "Order complete", the error title); the landing page keeps `brand | tagline`.
 - **Form controls:** the border of inputs, selects and secondary buttons (`--color-control-border`) has at least 3:1 contrast against page, surface and surface-2 in light and dark (computed in `cmd/server/css_test.go`).
 - **Checked so far:** templates rendered with sample data by a throwaway preview server and screenshotted with headless Chromium (Playwright) at 360, 390, 430, 768 and 1280 px, light and dark, with no horizontal overflow; the theme toggle and reload persistence were checked the same way. Not yet checked against the running stack, and contrast ratios were calculated by hand, not measured with a tool.
+
+## Orders
+
+Order history and tracking come from `order-service` (proto copied to `proto/orders/orders.proto`, stubs in `genproto/orders/`: its own Go package `frontend/genproto/orders`, because `Money`, `Address` and `OrderItem` clash with `demo.proto`; only the `go_package` option differs from the service's file. Regenerate: `protoc -I proto/orders --go_out=genproto/orders --go_opt=paths=source_relative --go-grpc_out=genproto/orders --go-grpc_opt=paths=source_relative proto/orders/orders.proto`, protoc 3.21.12, protoc-gen-go 1.36.11, protoc-gen-go-grpc 1.6.1). The frontend only reads orders; creating and confirming them is checkout's job.
+
+- **Whose orders:** the owner is the session cookie (`shop_session-id`, the same id the cart uses). The history asks for the session's orders; the tracking page passes the session as the `GetOrder` guard and additionally refuses an order whose `session_id` differs. Unknown, foreign and malformed ids (checked against the service's id rule before any call) all give the same `404` page.
+- **Tracker:** an ordered list Placed, Processing, Shipped, Delivered. Each stage says its state in words (Done, Current step, Pending, `aria-current="step"` on the current one), not by colour only; reached stages show their time, pending ones "Expected <time>, in about N minutes". A stage counts as reached when `status` is at or past it or its timestamp is not after `evaluated_at`; the "in about" text and the "Status as of" line use `evaluated_at`, never the browser clock. Times are shown in UTC. PENDING shows "We are still processing your payment" (no tracker, no tracking number); FAILED shows the failure reason (HTML-escaped like every value). The history only lists confirmed orders (`placed_only`).
+- **Live refresh:** while the order is not DELIVERED or FAILED the live part is wrapped with `hx-get` on the same URL and `hx-trigger="every 15s"` (`hx-swap="innerHTML"`); the answer is `286` once it is delivered or failed, which stops htmx. Without JavaScript the page says to reload. If a poll finds the service unavailable the page is left as it is (`204`) and the next poll tries again. Screen readers are not told about the changes (no live region: replacing the whole region every 15 s would re-read it).
+- **Pictures:** an order line's picture is only used if it is a path under `/static/img/products/` (no `..`, no query), otherwise the line has an empty picture box.
+- **Degradation:** like `REVIEW_SERVICE_ADDR`: lazy connection, 1.5 s deadline. Any failure of the call other than NotFound (down, slow, an error from the service) gives the `503` page "Orders are not available right now" on `/orders` and `/orders/{id}` only, with no backend text; nothing else in the shop calls the service. The header shows an Orders link (next to the cart) and the confirmation page a "Track your order" button linking to `/orders/<order id>` only when the feature is on.
+- **Checked:** `GOTOOLCHAIN=auto go vet ./... && go test -race -count=1 ./...` and golangci-lint v2.11.4 (fake order client: history empty, paging, session isolation, badges; tracking per status, stages from `evaluated_at`, FAILED reason and names escaped, foreign and unknown `404` without leaks, service down or hung `503`, fragment shape, polling attributes, feature off). By hand with headless Chromium against the frontend binary on the host and a Go stub of all backends (stub orders advance with the wall clock): history, tracking in every state, light and dark, 1440 and 390 px, no horizontal overflow; the page refreshed itself without a reload from "Order placed" to "Delivered" and polling stopped (`286`); the confirmation page's "Track your order" link opened the new order's tracking page.
+- **Not run:** against the real order-service, or with checkout creating real orders in it (checkout has to store them there first: the order id on the confirmation page must be the order-service id, and `session_id` the frontend's session id); `-tags e2e` tests (only vetted); the compose stack; Firefox/WebKit; a screen reader.
 
 ## Ratings and reviews
 
@@ -289,7 +305,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── icons.html       # inline SVG brand mark and icons (no image files)
 │   └── catalog.html     # department nav and tiles, search/sort toolbar, results fragment, pagination, product card
 ├── static/
-│   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css, browse.css, reviews.css
+│   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css, browse.css, reviews.css, orders.css
 │   ├── js/              # htmx.min.js (vendored), gallery.js
 │   ├── favicon.svg
 │   └── img/products/    # product photos (webp), see "Product images"
