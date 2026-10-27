@@ -144,3 +144,22 @@ func TestAddToCart_OutOfStockIsRejected(t *testing.T) {
 	}
 	assertContains(t, rr.Body.String(), "is out of stock.")
 }
+
+func TestDocumentTitlesDifferPerPage(t *testing.T) {
+	cat := sampleCatalog()
+	fe := newFakeFrontend(t, cat)
+	for name, c := range map[string]struct {
+		rr   *httptest.ResponseRecorder
+		want string
+	}{
+		"product": {do(fe, http.MethodGet, "/product/pan-05", "", nil), "<title>Pan 05 | Everly</title>"},
+		"escaped": {do(fe, http.MethodGet, "/product/soap-1", "", nil), "<title>Soap &lt;b&gt;bar&lt;/b&gt; | Everly</title>"},
+		"cart":    {do(fe, http.MethodGet, "/cart", "", nil), "<title>Cart | Everly</title>"},
+		"order":   {do(fe, http.MethodPost, "/cart/checkout", goodOrder, nil), "<title>Order complete | Everly</title>"},
+		"error":   {do(fe, http.MethodGet, "/product/nope", "", nil), "<title>Not found | Everly</title>"},
+	} {
+		if !strings.Contains(c.rr.Body.String(), c.want) {
+			t.Errorf("%s: want %s", name, c.want)
+		}
+	}
+}

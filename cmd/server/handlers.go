@@ -258,6 +258,7 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 		w.WriteHeader(code)
 	}
 	if err := getTemplates().ExecuteTemplate(w, "product", injectCommonTemplateData(r, map[string]interface{}{
+		"title":           p.GetName(),
 		"ad":              fe.chooseAd(r.Context(), p.Categories, log),
 		"show_currency":   true,
 		"currencies":      currencies,
@@ -429,6 +430,7 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		"currencies":       currencies,
 		"recommendations":  recommendations,
 		"cart_size":        linesSize(lines),
+		"title":            "Cart",
 		"stale_items":      stale,
 		"categories":       fe.navCategories(r.Context()),
 		"shipping_cost":    shippingCost,
@@ -526,6 +528,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := getTemplates().ExecuteTemplate(w, "order", injectCommonTemplateData(r, map[string]interface{}{
+		"title":           "Order complete",
 		"show_currency":   false,
 		"currencies":      currencies,
 		"categories":      fe.navCategories(r.Context()),
