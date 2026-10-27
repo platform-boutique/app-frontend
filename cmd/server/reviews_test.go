@@ -538,6 +538,24 @@ func TestPostReview_ReviewServiceErrors(t *testing.T) {
 		t.Errorf("invalid argument: status %d", rr.Code)
 	}
 
+	// the review service's duplicate and rate-limit answers get their own readable messages
+	for _, tc := range []struct {
+		code   codes.Code
+		status int
+		text   string
+	}{
+		{codes.AlreadyExists, http.StatusUnprocessableEntity, "already posted this review"},
+		{codes.ResourceExhausted, http.StatusTooManyRequests, "posting reviews too quickly"},
+	} {
+		rv = sampleReviews()
+		rv.addErr = status.Error(tc.code, "backend detail")
+		fe, _ = frontendWithReviews(t, rv)
+		rr := do(fe, http.MethodPost, "/product/pan-01/reviews", good, nil)
+		if rr.Code != tc.status || !strings.Contains(rr.Body.String(), tc.text) || strings.Contains(rr.Body.String(), "backend detail") {
+			t.Errorf("%v: status %d, want %d with %q and no backend text", tc.code, rr.Code, tc.status, tc.text)
+		}
+	}
+
 	// a hung service ends in 503 after the write timeout, not a hang
 	fe, _ = frontendWithReviews(t, nil)
 	fe.reviews = &slowAdd{fakeReviews: sampleReviews()}

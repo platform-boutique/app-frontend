@@ -268,9 +268,16 @@ func (fe *frontendServer) postReviewHandler(w http.ResponseWriter, r *http.Reque
 		log.WithField("error", err).WithField("product", id).Warn("could not store review")
 		code := http.StatusServiceUnavailable
 		form.Errors = map[string]string{"form": "We could not save your review right now. Please try again in a moment."}
-		if status.Code(err) == codes.InvalidArgument {
+		switch status.Code(err) {
+		case codes.InvalidArgument:
 			code = http.StatusUnprocessableEntity
 			form.Errors["form"] = "The review service did not accept this review. Please check your input."
+		case codes.AlreadyExists:
+			code = http.StatusUnprocessableEntity
+			form.Errors["form"] = "You already posted this review for this product."
+		case codes.ResourceExhausted:
+			code = http.StatusTooManyRequests
+			form.Errors["form"] = "You are posting reviews too quickly. Please wait a minute and try again."
 		}
 		fe.renderProduct(w, r, id, &form, code)
 		return
