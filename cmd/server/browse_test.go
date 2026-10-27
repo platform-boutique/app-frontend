@@ -71,7 +71,9 @@ func (f *fakeCatalog) ListProductsFiltered(_ context.Context, r *pb.ListProducts
 	return &pb.ListProductsResponse{Products: out[lo:hi], Total: int32(total), Page: int32(page), PageSize: int32(size)}, nil // #nosec G115 -- test data
 }
 
-type fakeCurrency struct{ pb.UnimplementedCurrencyServiceServer }
+type fakeCurrency struct {
+	pb.UnimplementedCurrencyServiceServer
+}
 
 func (fakeCurrency) GetSupportedCurrencies(context.Context, *pb.Empty) (*pb.GetSupportedCurrenciesResponse, error) {
 	return &pb.GetSupportedCurrenciesResponse{CurrencyCodes: []string{"USD", "EUR"}}, nil
@@ -80,17 +82,25 @@ func (fakeCurrency) Convert(_ context.Context, r *pb.CurrencyConversionRequest) 
 	return r.From, nil
 }
 
-type fakeCart struct{ pb.UnimplementedCartServiceServer }
+type fakeCart struct {
+	pb.UnimplementedCartServiceServer
+}
 
-func (fakeCart) GetCart(context.Context, *pb.GetCartRequest) (*pb.Cart, error) { return &pb.Cart{}, nil }
+func (fakeCart) GetCart(context.Context, *pb.GetCartRequest) (*pb.Cart, error) {
+	return &pb.Cart{}, nil
+}
 
-type fakeReco struct{ pb.UnimplementedRecommendationServiceServer }
+type fakeReco struct {
+	pb.UnimplementedRecommendationServiceServer
+}
 
 func (fakeReco) ListRecommendations(context.Context, *pb.ListRecommendationsRequest) (*pb.ListRecommendationsResponse, error) {
 	return &pb.ListRecommendationsResponse{}, nil
 }
 
-type fakeAds struct{ pb.UnimplementedAdServiceServer }
+type fakeAds struct {
+	pb.UnimplementedAdServiceServer
+}
 
 func (fakeAds) GetAds(context.Context, *pb.AdRequest) (*pb.AdResponse, error) {
 	return &pb.AdResponse{Ads: []*pb.Ad{{RedirectUrl: "/?category=kitchen", Text: "Kitchen week"}}}, nil
@@ -352,7 +362,7 @@ func TestProduct_GalleryBreadcrumbTagsOutOfStock(t *testing.T) {
 	html := rr.Body.String()
 	assertContains(t, html,
 		`<a href="/?category=beauty">Beauty &amp; care</a>`, // breadcrumb
-		`href="/static/img/products/soap-1-2.webp"`,          // gallery thumbnail link (works without JS)
+		`href="/static/img/products/soap-1-2.webp"`,         // gallery thumbnail link (works without JS)
 		`data-gallery-main`, `href="/?q=soap"`, "3.2 out of 5",
 		`disabled>Out of stock</button>`, `name="product_id" value="soap-1"`)
 	if strings.Contains(html, "Add to cart</button>") {
