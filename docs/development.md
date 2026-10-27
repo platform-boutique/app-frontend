@@ -2,7 +2,7 @@
 
 ## Running locally
 
-Requirements: Go 1.25+, Docker, and the seven backend services reachable (the quickest way is `platform-demo-observability/docker-compose.yaml`).
+Requirements: Go 1.26 (`go.mod` says `go 1.26.10`; with an older local Go use `GOTOOLCHAIN=auto`), Docker, and the seven backend services reachable (the quickest way is `platform-demo-observability/docker-compose.yaml`).
 
 ```bash
 # from source (note: entrypoint is ./cmd/server)
@@ -51,7 +51,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── home.html, product.html, cart.html, order.html, error.html  # pages
 │   ├── ad.html, recommendations.html  # shared blocks
 │   ├── icons.html       # inline SVG brand mark and icons (no image files)
-│   └── catalog.html     # empty extension points: nav_extra, catalog_toolbar, catalog_pagination
+│   └── catalog.html     # department nav and tiles, search/sort toolbar, results fragment, pagination, product card
 ├── static/
 │   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css
 │   ├── favicon.svg

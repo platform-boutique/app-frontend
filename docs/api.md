@@ -4,16 +4,16 @@ All routes are prefixed with `BASE_URL` (empty by default).
 
 | Route | Method | Description |
 |---|---|---|
-| `/` | GET, HEAD | Home — product grid, currency picker, ad, cart size |
-| `/product/{id}` | GET, HEAD | Product page — product, price, recommendations, ad |
-| `/cart` | GET, HEAD | View cart — items, shipping estimate, total, recommendations |
-| `/cart` | POST | Add item (form fields `product_id`, `quantity`) |
+| `/` | GET, HEAD | Home and catalogue — hero and department tiles (landing only), search / sort toolbar, product grid (24 per page), pagination, currency picker, ad, cart size. Query parameters: `category` (department id), `q` (search text, 100 characters at most; invalid UTF-8 is dropped), `sort` (`name` default, `price_asc`, `price_desc`, `rating`), `page` (1-based). With `HX-Request` it returns only the `#catalog-results` fragment (plus a `<title>`); when the view would change the hero or heading (landing <-> search, category or page 2) it answers `HX-Redirect` instead |
+| `/product/{id}` | GET, HEAD | Product page — product, gallery, price, stock, quantity select (1 to min(stock, 10)), recommendations, ad. Unknown id: `404` page |
+| `/cart` | GET, HEAD | View cart — items, shipping estimate, total, recommendations. Lines whose product is no longer in the catalog (a cart outlives the catalog) are skipped, listed in a notice with an Empty cart button, logged once per request and not counted in the header |
+| `/cart` | POST | Add item (form fields `product_id`, `quantity` 1-10). `422` with a readable message when the product is out of stock or quantity plus what is already in the cart exceeds the stock; unknown product: `404`. Stock is only checked here, orders do not decrement it yet |
 | `/cart/empty` | POST | Empty the cart |
 | `/cart/checkout` | POST | Validate the form, call `checkout-service.PlaceOrder`, render the order page |
 | `/setCurrency` | POST | Set the display currency cookie (`currency_code`) |
 | `/logout` | GET | Expire all cookies and redirect to `/` |
-| `/product-meta/{ids}` | GET | JSON of a single product (used by the page scripts) |
-| `/static/*` | GET | CSS, favicon, product images (`static/img/products/`) |
+| `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
+| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `favicon.svg`, product images (`img/products/`) |
 | `/_healthz` | GET | Liveness/readiness (`ok`) |
 | `/robots.txt` | GET | `Disallow: /` |
 
@@ -23,10 +23,28 @@ All routes are prefixed with `BASE_URL` (empty by default).
 
 | Page | Calls |
 |---|---|
-| Home | currency (list + convert per product), product-catalog (list), cart (get), ad (100 ms deadline, failures ignored) |
+| Home | currency (list + convert per product), product-catalog (`ListCategories` + `ListProductsFiltered`, 24 per page), cart (get, then product-catalog `GetProduct` per cart line for the header count), ad (100 ms deadline, failures ignored) |
 | Product | product-catalog (get), currency, cart, recommendation → product-catalog (up to 4), ad |
 | Cart | cart (get), shipping (quote with nil address), currency, product-catalog, recommendation |
 | Checkout | checkout (PlaceOrder), then recommendation + currency for the confirmation page |
+
+### Errors
+
+Error pages never show stack traces or backend error text; those go to the server log only (the page footer shows the request id to find the log line). The backend's gRPC status code decides the page, the services pass their codes through:
+
+| Backend status | HTTP | Page |
+|---|---|---|
+| `InvalidArgument`, `FailedPrecondition` | `422` | the backend's message (the `rpc error: code = ... desc =` wrapper and a `card_declined: ` style reason prefix are removed), e.g. the payment decline reason |
+| `NotFound` | `404` | "Not found" (unknown product id, unknown order) |
+| `Unavailable`, `DeadlineExceeded` | `503` | "Temporarily unavailable" |
+| anything else | `500` | generic text, no details |
+
+Our own input validation (add to cart, checkout form) answers `422` with the validation text, `400`/`403` use fixed texts. Error pages keep the header with the department nav and a page-specific `<title>`. htmx requests that fail get a small message for the `#page-alert` region (`HX-Retarget`, `HX-Push-Url: false`) and the page is left as it is; htmx is configured (`htmx-config` meta tag) to swap 4xx/5xx answers.
+Until checkout-service passes the payment status through, a decline arrives as `Internal: failed to charge card: ... rpc error: code = InvalidArgument|FailedPrecondition desc = <reason>: <text>`; for that one message shape the frontend extracts `<text>` and shows it as `422`. Any other `Internal` stays a generic `500`.
+
+### Deadlines
+
+Every backend call has a deadline so that a hung service ends in a `503` page instead of a dropped connection (the server's `WriteTimeout` is 30 s): 3 s for catalog, currency, cart, recommendation and shipping (`backendTimeout` in `cmd/server/rpc.go`), 15 s for `PlaceOrder`, 100 ms for ads, 400 ms / 2 s for review-service reads / writes. They are constants, not configuration.
 
 ### Sessions & cookies
 

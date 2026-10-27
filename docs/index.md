@@ -7,7 +7,7 @@ The HTTP web storefront for the platform-demo e-commerce platform. It serves ser
 </div>
 
 <div class="pd-facts" markdown>
-<div><span>Runtime</span><strong>Go 1.25</strong><small>Go</small></div>
+<div><span>Runtime</span><strong>Go 1.26</strong><small>Go</small></div>
 <div><span>Listens on</span><strong>8080</strong><small>HTTP</small></div>
 <div><span>State</span><strong>Stateless</strong></div>
 <div><span>Image</span><strong>frontend</strong><small>mladenovskistefan/</small></div>

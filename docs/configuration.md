@@ -28,7 +28,7 @@
 Notes:
 
 - All seven `*_ADDR` variables are **mandatory**: a missing one makes the process `panic` at startup. They are plain `host:port` (no scheme). Use FQDNs (`svc.<namespace>.svc.cluster.local:<port>`) if services live in other namespaces.
-- gRPC connections use `grpc.NewClient` (lazy): the pod starts and `/_healthz` returns `ok` even if every backend is down. Page loads then fail with HTTP 500 until backends return.
+- gRPC connections use `grpc.NewClient` (lazy): the pod starts and `/_healthz` returns `ok` even if every backend is down. Page loads then fail with a 503 or 500 error page until backends return (each backend call times out after at most 3 s).
 - The earlier README listed `ENV_PLATFORM`; it is **not read by the code**.
 - Log level is hard-coded to `debug` (JSON via `logrus`) — expect chatty logs; there is no env switch.
 - Telemetry is **pushed**, not scraped: traces, metrics and logs share one OTLP/gRPC endpoint (Alloy); profiles go to Pyroscope (via Alloy). `service.instance.id` is the pod hostname, so replicas stay distinct in Mimir.
