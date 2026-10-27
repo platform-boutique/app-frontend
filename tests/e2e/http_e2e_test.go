@@ -215,7 +215,7 @@ func TestProduct_UnknownID_ReturnsNotFound(t *testing.T) {
 func TestProduct_ExistingID_ReturnsOK(t *testing.T) {
 	skipIfDownstream(t)
 
-	resp, err := defaultClient.Get(baseURL() + "/product/"+seededProductID)
+	resp, err := defaultClient.Get(baseURL() + "/product/" + seededProductID)
 	if err != nil {
 		t.Fatalf("GET /product/%s: %v", seededProductID, err)
 	}
