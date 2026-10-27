@@ -85,3 +85,62 @@ func TestEmptyState_DepartmentUnknownOnlyWhenCategoriesAreKnown(t *testing.T) {
 	}
 	assertContains(t, html, "No product matches your search")
 }
+
+func options(html string) []string {
+	start := strings.Index(html, `id="quantity"`)
+	end := start + strings.Index(html[start:], "</select>")
+	var out []string
+	for _, p := range strings.Split(html[start:end], "<option>")[1:] {
+		out = append(out, strings.TrimSpace(p[:strings.Index(p, "</option>")]))
+	}
+	return out
+}
+
+func TestProduct_QuantityOptionsStopAtStock(t *testing.T) {
+	fe := newFakeFrontend(t, sampleCatalog())
+	for id, want := range map[string]string{
+		"pan-05":  "1 2 3 4 5 6 7 8 9 10", // stock 20, capped at 10
+		"cream-1": "1 2 3 4",              // stock 4
+		"soap-1":  "1",                    // out of stock: button disabled anyway
+	} {
+		if got := strings.Join(options(do(fe, http.MethodGet, "/product/"+id, "", nil).Body.String()), " "); got != want {
+			t.Errorf("%s: quantity options %q, want %q", id, got, want)
+		}
+	}
+}
+
+func TestAddToCart_QuantityAboveStockIsRejected(t *testing.T) {
+	cart := &fakeCart{}
+	fe := newFakeFrontendWith(t, sampleCatalog(), cart, &fakeCheckout{})
+	rr := do(fe, http.MethodPost, "/cart", form("product_id", "cream-1", "quantity", "5"), nil) // stock 4
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422", rr.Code)
+	}
+	assertContains(t, rr.Body.String(), "Only 4 of Cream in stock.")
+	if len(cart.added) != 0 {
+		t.Error("rejected quantity was added to the cart")
+	}
+	if rr := do(fe, http.MethodPost, "/cart", form("product_id", "cream-1", "quantity", "4"), nil); rr.Code != http.StatusFound || len(cart.added) != 1 {
+		t.Errorf("quantity equal to stock: status %d, added %d", rr.Code, len(cart.added))
+	}
+}
+
+func TestAddToCart_CountsWhatIsAlreadyInTheCart(t *testing.T) {
+	cart := &fakeCart{items: []*pb.CartItem{{ProductId: "cream-1", Quantity: 3}}}
+	fe := newFakeFrontendWith(t, sampleCatalog(), cart, &fakeCheckout{})
+	rr := do(fe, http.MethodPost, "/cart", form("product_id", "cream-1", "quantity", "2"), nil) // 3 + 2 > 4
+	if rr.Code != http.StatusUnprocessableEntity || len(cart.added) != 0 {
+		t.Fatalf("status %d, added %d", rr.Code, len(cart.added))
+	}
+	assertContains(t, rr.Body.String(), "3 already in your cart")
+}
+
+func TestAddToCart_OutOfStockIsRejected(t *testing.T) {
+	cart := &fakeCart{}
+	fe := newFakeFrontendWith(t, sampleCatalog(), cart, &fakeCheckout{})
+	rr := do(fe, http.MethodPost, "/cart", form("product_id", "soap-1", "quantity", "1"), nil)
+	if rr.Code != http.StatusUnprocessableEntity || len(cart.added) != 0 {
+		t.Errorf("status %d, added %d", rr.Code, len(cart.added))
+	}
+	assertContains(t, rr.Body.String(), "is out of stock.")
+}

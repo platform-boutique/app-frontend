@@ -18,6 +18,7 @@ const (
 	catalogPageSize = 24
 	maxQueryLen     = 100 // runes, same as the input's maxlength
 	maxCategoryLen  = 64  // runes
+	maxCartQuantity = 10  // per add to cart, the same limit as validator.AddToCartPayload
 	lowStockLimit   = 5
 )
 
@@ -275,6 +276,20 @@ type productPage struct {
 	Images   []string // gallery, first one is the main image; never empty when the product has a picture
 	Category *pb.Category
 	Stock    stockInfo
+	// Quantities are the options of the quantity select: 1..min(stock, 10).
+	Quantities []int
+}
+
+func quantityOptions(stock int32) []int {
+	n := int(stock)
+	if n > maxCartQuantity {
+		n = maxCartQuantity
+	}
+	out := make([]int, 0, max(n, 0))
+	for i := 1; i <= n; i++ {
+		out = append(out, i)
+	}
+	return out
 }
 
 func productImages(p *pb.Product) []string {

@@ -248,7 +248,7 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	product := productPage{Item: p, Price: price, Images: productImages(p), Category: findCategory(cats, p.GetDepartment()), Stock: stockOf(p)}
+	product := productPage{Item: p, Price: price, Images: productImages(p), Category: findCategory(cats, p.GetDepartment()), Stock: stockOf(p), Quantities: quantityOptions(p.GetStock())}
 	if form != nil {
 		reviews.Form = *form
 	}
@@ -292,6 +292,30 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 	}
 	if payload.Quantity > math.MaxInt32 {
 		fe.renderHTTPError(log, r, w, errors.New("quantity exceeds maximum allowed value"), http.StatusBadRequest)
+		return
+	}
+	// stock is not decremented before inventory exists, but one cart can not hold more than is in stock
+	if p.GetStock() <= 0 {
+		fe.renderHTTPError(log, r, w, errors.Errorf("%s is out of stock.", p.GetName()), http.StatusUnprocessableEntity)
+		return
+	}
+	cart, err := fe.getCart(r.Context(), sessionID(r))
+	if err != nil {
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve cart"), http.StatusInternalServerError)
+		return
+	}
+	inCart := int64(0)
+	for _, item := range cart {
+		if item.GetProductId() == p.GetId() {
+			inCart += int64(item.GetQuantity())
+		}
+	}
+	if inCart+int64(payload.Quantity) > int64(p.GetStock()) {
+		msg := errors.Errorf("Only %d of %s in stock.", p.GetStock(), p.GetName())
+		if inCart > 0 {
+			msg = errors.Errorf("Only %d of %s in stock, and %d already in your cart.", p.GetStock(), p.GetName(), inCart)
+		}
+		fe.renderHTTPError(log, r, w, msg, http.StatusUnprocessableEntity)
 		return
 	}
 	if err := fe.insertCart(r.Context(), sessionID(r), p.GetId(), int32(payload.Quantity)); err != nil { // #nosec G115 -- bounds checked above

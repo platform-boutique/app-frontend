@@ -55,12 +55,9 @@
           <label for="quantity">Quantity</label>
           <span class="select-wrap">
             <select class="select" name="quantity" id="quantity">
-              <option>1</option>
-              <option>2</option>
-              <option>3</option>
-              <option>4</option>
-              <option>5</option>
-              <option>10</option>
+              {{ range $.product.Quantities }}<option>{{ . }}</option>
+              {{ else }}<option>1</option>
+              {{ end }}
             </select>
             {{ template "icon_chevron" . }}
           </span>
