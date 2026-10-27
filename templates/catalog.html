@@ -123,18 +123,9 @@
   <div class="product-card-meta">
     <span class="product-card-category">{{ with .DeptName }}{{ . }}{{ end }}{{ if and .DeptName .Item.Brand }} &middot; {{ end }}{{ .Item.Brand }}</span>
     <a class="product-card-link" href="{{ $root.baseUrl }}/product/{{ .Item.Id }}">{{ .Item.Name }}</a>
-    {{ template "stars" .Item.Rating }}
+    {{ with .Rating }}{{ template "rating_badge" . }}{{ end }}
     <span class="product-card-price">{{ renderMoney .Price }}</span>
   </div>
 </li>
-{{ end }}
-{{ end }}
-
-{{/* Star rating for a 0-5 value; renders nothing for 0. */}}
-{{ define "stars" }}
-{{ if gt . 0.0 }}
-<span class="stars" role="img" aria-label="Rated {{ fmtRating . }} out of 5">
-  <span class="stars-fill" style="width: {{ ratingPct . }}"></span>
-</span>
 {{ end }}
 {{ end }}

@@ -1,0 +1,146 @@
+{{/*
+  Ratings and reviews (data from review-service, see cmd/server/reviews.go).
+  Styles: static/styles/reviews.css.
+
+  Progressive enhancement: the review list is paged with plain links
+  ("Older reviews" / "Newer reviews"). With htmx loaded, "Show more reviews"
+  fetches the next page as <li> items (the server answers HX-Request with the
+  "review_items" fragment) and appends them. The form is a normal POST that
+  redirects back (post/redirect/get).
+*/}}
+
+{{/* Star glyphs for a 0-5 value, decorative: the text next to them says the rating. */}}
+{{ define "stars" }}
+<span class="stars" aria-hidden="true"><span class="stars-fill" style="width: {{ ratingPct . }}"></span></span>
+{{ end }}
+
+{{/* Compact rating for a product card. Data: ratingView. Reads as "4.5 out of 5, 12 reviews". */}}
+{{ define "rating_badge" }}
+<span class="rating" role="img" aria-label="{{ .Label }}">
+  {{ template "stars" .Average }}
+  <span class="rating-count" aria-hidden="true">({{ .Count }})</span>
+</span>
+{{ end }}
+
+{{ define "icon_star" }}
+<svg class="icon-star" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+  <path d="M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z" stroke-width="1.6" stroke-linejoin="round"/>
+</svg>
+{{ end }}
+
+{{/* The reviews block of the product page. Not rendered when reviews are switched off. */}}
+{{ define "reviews_section" }}
+{{ with $.reviews }}{{ if .Enabled }}
+<section class="reviews container" id="reviews" aria-labelledby="reviews-title">
+  <div class="section-head">
+    <h2 id="reviews-title">Customer reviews</h2>
+  </div>
+  {{ if .Posted }}
+  <p class="form-notice is-success" role="status">{{ template "icon_check" $ }}<span>Thank you, your review has been posted.</span></p>
+  {{ end }}
+  <div class="reviews-layout">
+    <div class="reviews-list-col">
+      {{ if .Unavailable }}
+      <p class="form-notice" role="status">{{ template "icon_alert" $ }}<span>Reviews are not available right now. Please try again in a moment.</span></p>
+      {{ else if not .Rating.Count }}
+      <p class="muted">No reviews yet. Be the first to share what you think.</p>
+      {{ else }}
+      <div class="review-summary">
+        <p class="review-average" aria-label="{{ .Rating.Label }}">
+          <span class="review-average-num" aria-hidden="true">{{ fmtRating .Rating.Average }}</span>
+          <span aria-hidden="true">{{ template "stars" .Rating.Average }}</span>
+          <span class="review-average-count" aria-hidden="true">{{ .Rating.Count }} review{{ if ne .Rating.Count 1 }}s{{ end }}</span>
+        </p>
+      </div>
+      {{ if .NewerURL }}<p class="review-newer"><a href="{{ .NewerURL }}">&larr; Newer reviews</a></p>{{ end }}
+      <ol class="review-list">
+        {{ template "review_items" $ }}
+      </ol>
+      {{ end }}
+    </div>
+
+    <div class="review-form-col">
+      {{ template "review_form" $ }}
+    </div>
+  </div>
+</section>
+{{ end }}{{ end }}
+{{ end }}
+
+{{/* The <li> items of one page of reviews plus the link to the next page. Also the htmx fragment. */}}
+{{ define "review_items" }}
+{{ with $.reviews }}
+{{ if .Unavailable }}<li class="review-more"><p class="muted" role="status">More reviews are not available right now.</p></li>
+{{ else }}
+{{ range .Reviews }}
+<li class="review">
+  <div class="review-head">
+    <span class="rating" role="img" aria-label="Rated {{ .Rating }} out of 5">{{ template "stars" .Stars }}</span>
+    <span class="review-author">{{ .Author }}</span>
+    {{ if .Date }}<time class="review-date" datetime="{{ .ISODate }}">{{ .Date }}</time>{{ end }}
+  </div>
+  <p class="review-comment">{{ .Comment }}</p>
+</li>
+{{ end }}
+{{ if .OlderURL }}
+<li class="review-more">
+  <a class="btn btn-secondary" id="review-more-link" href="{{ .OlderURL }}" hx-get="{{ .MoreURL }}" hx-target="closest li" hx-swap="outerHTML">Show more reviews</a>
+</li>
+{{ end }}
+{{ end }}
+{{ end }}
+{{ end }}
+
+{{/* "Write a review": name, star rating (radios), text. Errors are shown inline. */}}
+{{ define "review_form" }}
+{{ with $.reviews.Form }}
+<form class="review-form" id="review-form" method="POST" action="{{ $.baseUrl }}/product/{{ $.product.Item.Id }}/reviews#review-form" aria-labelledby="review-form-title">
+  <h3 id="review-form-title">Write a review</h3>
+  {{ if .HasErrors }}
+  <div class="form-notice is-danger" role="alert">
+    {{ template "icon_alert" $ }}
+    <div>
+      <strong>Your review was not sent.</strong>
+      {{ with index .Errors "form" }}<p>{{ . }}</p>{{ else }}
+      <ul>
+        {{ with index .Errors "name" }}<li><a href="#review-name">{{ . }}</a></li>{{ end }}
+        {{ with index .Errors "rating" }}<li><a href="#rating-1">{{ . }}</a></li>{{ end }}
+        {{ with index .Errors "comment" }}<li><a href="#review-comment">{{ . }}</a></li>{{ end }}
+      </ul>
+      {{ end }}
+    </div>
+  </div>
+  {{ end }}
+
+  <div class="field">
+    <label for="review-name">Your name</label>
+    <input class="input" type="text" id="review-name" name="author_name" value="{{ .Name }}" maxlength="80" required
+      autocomplete="name"{{ if index .Errors "name" }} aria-invalid="true" aria-describedby="review-name-error"{{ end }}>
+    {{ with index .Errors "name" }}<p class="field-error" id="review-name-error">{{ . }}</p>{{ end }}
+  </div>
+
+  <fieldset class="field rating-field"{{ if index .Errors "rating" }} aria-describedby="review-rating-error"{{ end }}>
+    <legend>Your rating</legend>
+    <div class="star-input">
+      {{ range ratingChoices }}
+      <input class="visually-hidden" type="radio" name="rating" id="rating-{{ . }}" value="{{ . }}" required{{ if eq $.reviews.Form.Rating . }} checked{{ end }}>
+      <label for="rating-{{ . }}">
+        <span class="visually-hidden">{{ . }} star{{ if ne . 1 }}s{{ end }}</span>
+        {{ template "icon_star" $ }}
+      </label>
+      {{ end }}
+    </div>
+    {{ with index .Errors "rating" }}<p class="field-error" id="review-rating-error">{{ . }}</p>{{ end }}
+  </fieldset>
+
+  <div class="field">
+    <label for="review-comment">Your review</label>
+    <textarea class="input textarea" id="review-comment" name="comment" rows="5" maxlength="2000" required
+      {{ if index .Errors "comment" }}aria-invalid="true" aria-describedby="review-comment-error"{{ end }}>{{ .Comment }}</textarea>
+    {{ with index .Errors "comment" }}<p class="field-error" id="review-comment-error">{{ . }}</p>{{ end }}
+  </div>
+
+  <button type="submit" class="btn btn-primary">Post review</button>
+</form>
+{{ end }}
+{{ end }}

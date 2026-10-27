@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	pb "frontend/genproto"
 )
 
 const (
@@ -62,6 +64,11 @@ type frontendServer struct {
 
 	adSvcAddr string
 	adSvcConn *grpc.ClientConn
+
+	// optional: nil when REVIEW_SERVICE_ADDR is set to an empty string (reviews off)
+	reviewSvcAddr string
+	reviewSvcConn *grpc.ClientConn
+	reviews       pb.ReviewServiceClient
 }
 
 func main() {
@@ -123,10 +130,19 @@ func main() {
 	mustConnGRPC(ctx, &svc.checkoutSvcConn, svc.checkoutSvcAddr)
 	mustConnGRPC(ctx, &svc.adSvcConn, svc.adSvcAddr)
 
+	// review-service is optional: lazy connection, pages render without ratings while it is down
+	if svc.reviewSvcAddr = reviewAddrFromEnv(); svc.reviewSvcAddr != "" {
+		mustConnGRPC(ctx, &svc.reviewSvcConn, svc.reviewSvcAddr)
+		svc.reviews = pb.NewReviewServiceClient(svc.reviewSvcConn)
+	} else {
+		log.Info("REVIEW_SERVICE_ADDR is empty: ratings and reviews are off")
+	}
+
 	// --- Router ---
 	r := mux.NewRouter()
 	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/product/{id}", svc.productHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/product/{id}/reviews", svc.postReviewHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/cart", svc.viewCartHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/cart", svc.addToCartHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)

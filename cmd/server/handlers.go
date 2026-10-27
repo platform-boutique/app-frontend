@@ -45,6 +45,7 @@ func getTemplates() *template.Template {
 				"ratingPct":          ratingPct,
 				"fmtRating":          fmtRating,
 				"add1":               func(i int) int { return i + 1 },
+				"ratingChoices":      func() []int { return []int{1, 2, 3, 4, 5} },
 			}).ParseGlob(path))
 	})
 	return tmpl
@@ -94,6 +95,15 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// ratings of the whole page in one call, in parallel with the price conversions
+	ids := make([]string, len(products))
+	for i, p := range products {
+		ids[i] = p.GetId()
+	}
+	var ratings map[string]ratingView
+	wg.Add(1)
+	go func() { defer wg.Done(); ratings = fe.getRatingSummaries(r.Context(), log, ids) }()
+
 	// convert all product prices in parallel
 	type priceResult struct {
 		price *pb.Money
@@ -117,6 +127,9 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ps[i] = productCard{Item: p, Price: prices[i].price, Image: cardImage(p), DeptName: deptName(cats, p.GetDepartment()), Stock: stockOf(p)}
+		if rv, ok := ratings[p.GetId()]; ok {
+			ps[i].Rating = &rv
+		}
 	}
 
 	data := map[string]interface{}{
@@ -150,6 +163,18 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 		renderHTTPError(log, r, w, errors.New("product id not specified"), http.StatusBadRequest)
 		return
 	}
+	// htmx "load more" of the reviews: only the next items, not the whole page
+	if isFragmentRequest(r) && r.URL.Query().Has("rpage") {
+		fe.reviewsFragment(w, r, id)
+		return
+	}
+	fe.renderProduct(w, r, id, nil, http.StatusOK)
+}
+
+// renderProduct renders the product page. form is the review form to show with its
+// errors after a rejected post (nil = empty form); code is the HTTP status.
+func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, id string, form *reviewForm, code int) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.WithField("id", id).WithField("currency", currentCurrency(r)).Debug("serving product page")
 
 	// fetch product, currencies, and cart in parallel
@@ -157,12 +182,14 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 		p          *pb.Product
 		currencies []string
 		cart       []*pb.CartItem
+		reviews    reviewsSection
 		prodErr    error
 		currErr    error
 		cartErr    error
 	)
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
+	go func() { defer wg.Done(); reviews = fe.loadReviews(r.Context(), log, id, reviewPageParam(r)) }()
 	go func() { defer wg.Done(); p, prodErr = fe.getProduct(r.Context(), id) }()
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
 	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
@@ -216,7 +243,14 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	product := productPage{Item: p, Price: price, Images: productImages(p), Category: findCategory(cats, p.GetDepartment()), Stock: stockOf(p)}
+	if form != nil {
+		reviews.Form = *form
+	}
+	reviews.Posted = r.URL.Query().Get("reviewed") == "1"
 
+	if code != http.StatusOK {
+		w.WriteHeader(code)
+	}
 	if err := getTemplates().ExecuteTemplate(w, "product", injectCommonTemplateData(r, map[string]interface{}{
 		"ad":              fe.chooseAd(r.Context(), p.Categories, log),
 		"show_currency":   true,
@@ -224,6 +258,7 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 		"product":         product,
 		"categories":      cats,
 		"recommendations": recommendations,
+		"reviews":         reviews,
 		"cart_size":       cartSize(cart),
 	})); err != nil {
 		log.Println(err)

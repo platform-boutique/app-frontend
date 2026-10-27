@@ -32,11 +32,11 @@
     <div class="product-info">
       {{ with $.product.Item.Brand }}<p class="product-brand">{{ . }}</p>{{ end }}
       <h1>{{ $.product.Item.Name }}</h1>
-      {{ if gt $.product.Item.Rating 0.0 }}
-      <p class="product-rating">{{ template "stars" $.product.Item.Rating }}
-        <span>{{ fmtRating $.product.Item.Rating }} out of 5{{ if gt $.product.Item.ReviewCount 0 }} &middot; {{ $.product.Item.ReviewCount }} review{{ if ne $.product.Item.ReviewCount 1 }}s{{ end }}{{ end }}</span>
+      {{ with $.reviews }}{{ if .Rating.Count }}
+      <p class="product-rating"><a href="#reviews">{{ template "stars" .Rating.Average }}
+        <span>{{ .Rating.Label }}</span></a>
       </p>
-      {{ end }}
+      {{ end }}{{ end }}
       <p class="product-price">{{ renderMoney $.product.Price }}</p>
       <p class="stock-status{{ if $.product.Stock.Out }} is-out{{ else if $.product.Stock.Low }} is-low{{ else }} is-in{{ end }}">
         {{ if $.product.Stock.Out }}Out of stock{{ else if $.product.Stock.Low }}Only {{ $.product.Stock.N }} left in stock{{ else }}In stock{{ end }}
@@ -78,6 +78,8 @@
       </ul>
     </div>
   </div>
+
+  {{ template "reviews_section" . }}
 
   {{ if $.recommendations }}{{ template "recommendations" $ }}{{ end }}
   {{ if $.ad }}{{ template "text_ad" $ }}{{ end }}

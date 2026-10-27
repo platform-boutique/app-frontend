@@ -363,13 +363,14 @@ func TestProduct_GalleryBreadcrumbTagsOutOfStock(t *testing.T) {
 	assertContains(t, html,
 		`<a href="/?category=beauty">Beauty &amp; care</a>`, // breadcrumb
 		`href="/static/img/products/soap-1-2.webp"`,         // gallery thumbnail link (works without JS)
-		`data-gallery-main`, `href="/?q=soap"`, "3.2 out of 5",
+		`data-gallery-main`, `href="/?q=soap"`,
 		`disabled>Out of stock</button>`, `name="product_id" value="soap-1"`)
 	if strings.Contains(html, "Add to cart</button>") {
 		t.Error("Add button should be replaced when stock is 0")
 	}
-	if strings.Contains(html, "review") {
-		t.Error("review count should stay hidden when 0")
+	// no review client in these tests: no ratings, no reviews block (see reviews_test.go)
+	if strings.Contains(html, "Customer reviews") || strings.Contains(html, `class="stars"`) {
+		t.Error("reviews and stars should be hidden without a review service")
 	}
 }
 

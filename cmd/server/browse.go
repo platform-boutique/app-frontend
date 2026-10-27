@@ -98,6 +98,7 @@ type productCard struct {
 	Image    string // thumbnail, falls back to picture
 	DeptName string
 	Stock    stockInfo
+	Rating   *ratingView // from review-service; nil = no reviews or service unavailable
 }
 
 type stockInfo struct {
