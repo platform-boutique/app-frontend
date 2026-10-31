@@ -1,0 +1,25 @@
+syntax = "proto3";
+package hipstershop.mailbox;
+import "google/protobuf/timestamp.proto";
+
+option go_package = "frontend/genproto/mailbox;mailbox";
+
+service MailboxService {
+  // ListOrderEmails returns the mails (newest first, WITHOUT bodies) of the given orders (1-50 ids). The caller (the
+  // frontend) is responsible for passing only order ids the visitor owns. Unknown ids give nothing.
+  rpc ListOrderEmails(ListOrderEmailsRequest) returns (ListOrderEmailsResponse);
+  // GetOrderEmail returns one mail WITH bodies. The mail must belong to order_id, otherwise NOT_FOUND (same answer as unknown).
+  rpc GetOrderEmail(GetOrderEmailRequest) returns (OrderEmail);
+}
+message ListOrderEmailsRequest  { repeated string order_ids = 1; }
+message ListOrderEmailsResponse { repeated OrderEmail emails = 1; }
+message GetOrderEmailRequest    { string email_id = 1; string order_id = 2; }
+message OrderEmail {
+  string id = 1;
+  string order_id = 2;
+  string to = 3;
+  string subject = 4;
+  string html_body = 5;   // empty in list answers
+  string text_body = 6;   // empty in list answers
+  google.protobuf.Timestamp created_at = 7;
+}
