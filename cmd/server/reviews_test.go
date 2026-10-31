@@ -140,6 +140,7 @@ func do(fe *frontendServer, method, target, body string, header map[string]strin
 	r.HandleFunc("/cart", fe.addToCartHandler).Methods(http.MethodPost)
 	r.HandleFunc("/cart/empty", fe.emptyCartHandler).Methods(http.MethodPost)
 	r.HandleFunc("/cart/checkout", fe.placeOrderHandler).Methods(http.MethodPost)
+	r.HandleFunc("/ads/{id}/click", fe.adClickHandler).Methods(http.MethodGet)
 	req := requestWithContext(method, target, body)
 	for k, v := range header {
 		req.Header.Set(k, v)
@@ -333,8 +334,9 @@ func TestProduct_SummaryListAndForm(t *testing.T) {
 	if len(rv.listCalls) != 1 || rv.listCalls[0].ProductId != "pan-01" || rv.listCalls[0].Page != 1 || rv.listCalls[0].PageSize != reviewsPageSize {
 		t.Errorf("list calls: %+v", rv.listCalls)
 	}
-	if len(rv.summaryCalls) != 0 {
-		t.Error("the product page needs no summary call, ListReviews carries total and average")
+	// slice 7: the rating bars need star_counts, which only GetRatingSummary carries
+	if len(rv.summaryCalls) != 1 || len(rv.summaryCalls[0]) != 1 || rv.summaryCalls[0][0] != "pan-01" {
+		t.Errorf("the product page makes ONE summary call for its own product, got %v", rv.summaryCalls)
 	}
 }
 
