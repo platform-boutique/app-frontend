@@ -2,23 +2,12 @@
  * Ratings and reviews (templates/reviews.html, catalog.html, product.html):
  * rating on cards, summary and list on the product page, the review form with
  * its star radios. Uses the tokens from styles.css. The star glyphs of the
- * display (.stars) are in browse.css; --color-star below is for the form.
+ * display (.stars) are in browse.css; --color-star and --color-star-empty (defined below, shared with .stars) follow the theme.
  */
 
 :root {
-  --color-star: #b97a0c;       /* 3:1 or better on the light surfaces */
-  --color-star-empty: #8a7e6f;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-star: #f0b44f;
-    --color-star-empty: #a79c8d;
-  }
-}
-/* explicit choice from the header toggle - keep in sync with the block above */
-:root[data-theme="dark"] {
-  --color-star: #f0b44f;
-  --color-star-empty: #a79c8d;
+  --color-star: var(--color-brass); /* filled stars: brass, >= 3:1 on the surfaces in both themes */
+  --color-star-empty: var(--color-control-border); /* empty outlines */
 }
 
 /* ------------------------------------------------------------ rating text */

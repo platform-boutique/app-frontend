@@ -52,7 +52,7 @@
   min-height: 420px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  background: #fff;
+  background: #fff; /* the mail's own page, deliberately not themed */
   color-scheme: light;
 }
 @media (max-width: 479px) {
