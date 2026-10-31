@@ -28,6 +28,28 @@
 </svg>
 {{ end }}
 
+{{/*
+  The distribution of the ratings: five rows, 5 stars on top, a bar (share of all reviews)
+  and the number of reviews at the right. Data: ratingView. Nothing is rendered without a
+  distribution (older review-service) or without reviews. Each row has its own text
+  alternative ("3 reviews rated 5 stars"); the drawn parts are hidden from screen readers
+  and the count is printed, so the bars never carry meaning by length or colour alone.
+*/}}
+{{ define "rating_bars" }}
+{{ with .Bars }}
+<ul class="rating-bars" aria-label="How the reviews are spread over the ratings">
+  {{ range . }}
+  <li class="rating-bar">
+    <span class="visually-hidden">{{ .Label }}</span>
+    <span class="rating-bar-label" aria-hidden="true">{{ .Stars }} {{ template "icon_star" $ }}</span>
+    <span class="rating-bar-track" aria-hidden="true"><span class="rating-bar-fill" style="width: {{ .Width }}"></span></span>
+    <span class="rating-bar-count" aria-hidden="true">{{ .Count }}</span>
+  </li>
+  {{ end }}
+</ul>
+{{ end }}
+{{ end }}
+
 {{/* The reviews block of the product page. Not rendered when reviews are switched off. */}}
 {{ define "reviews_section" }}
 {{ with $.reviews }}{{ if .Enabled }}
@@ -51,6 +73,7 @@
           <span aria-hidden="true">{{ template "stars" .Rating.Average }}</span>
           <span class="review-average-count" aria-hidden="true">{{ .Rating.Count }} review{{ if ne .Rating.Count 1 }}s{{ end }}</span>
         </p>
+        {{ template "rating_bars" .Rating }}
       </div>
       {{ if .NewerURL }}<p class="review-newer"><a href="{{ .NewerURL }}">&larr; Newer reviews</a></p>{{ end }}
       <ol class="review-list">

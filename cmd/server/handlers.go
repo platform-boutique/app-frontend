@@ -46,6 +46,7 @@ func getTemplates() *template.Template {
 				"fmtRating":          fmtRating,
 				"add1":               func(i int) int { return i + 1 },
 				"ratingChoices":      func() []int { return []int{1, 2, 3, 4, 5} },
+				"adHref":             adHref,
 			}).ParseGlob(path))
 	})
 	return tmpl
@@ -157,7 +158,7 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	} else {
-		data["ad"] = fe.chooseAd(r.Context(), []string{}, log)
+		data["ad"] = fe.chooseAd(r.Context(), adContextKeys(params), log)
 	}
 	if err := getTemplates().ExecuteTemplate(w, name, injectCommonTemplateData(r, data)); err != nil {
 		log.Error(err)
@@ -197,7 +198,7 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 	)
 	var wg sync.WaitGroup
 	wg.Add(4)
-	go func() { defer wg.Done(); reviews = fe.loadReviews(r.Context(), log, id, reviewPageParam(r)) }()
+	go func() { defer wg.Done(); reviews = fe.loadReviews(r.Context(), log, id, reviewPageParam(r), true) }()
 	go func() { defer wg.Done(); p, prodErr = fe.getProduct(r.Context(), id) }()
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
 	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), cartKey(r)) }()

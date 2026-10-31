@@ -2,7 +2,7 @@
 <aside class="ad-slot container" aria-label="Advertisement">
     <div class="ad-card">
         <span class="ad-label">Ad</span>
-        <a href="{{ $.baseUrl }}{{ .ad.RedirectUrl }}" rel="nofollow noopener noreferrer" target="_blank">{{ .ad.Text }}</a>
+        <a href="{{ adHref $.baseUrl .ad }}" rel="nofollow noopener noreferrer" target="_blank">{{ .ad.Text }}</a>
     </div>
 </aside>
 {{ end }}

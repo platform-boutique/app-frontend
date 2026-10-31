@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,6 +51,65 @@ func reviewAddrFromEnv() string {
 type ratingView struct {
 	Average float64
 	Count   int32
+	// Stars[0] is the number of 1-star reviews ... Stars[4] the 5-star ones. Only
+	// meaningful when HasStars: an older review-service sends no distribution.
+	Stars    [5]int32
+	HasStars bool
+}
+
+// starsFromCounts validates the distribution of a summary: exactly five entries, none
+// negative, adding up to count. Anything else (no field from an older service, an
+// inconsistent answer) is not shown rather than guessed at.
+func starsFromCounts(counts []int32, count int32) (stars [5]int32, ok bool) {
+	if len(counts) != len(stars) || count <= 0 {
+		return stars, false
+	}
+	var sum int64
+	for i, c := range counts {
+		if c < 0 {
+			return stars, false
+		}
+		stars[i] = c
+		sum += int64(c)
+	}
+	return stars, sum == int64(count)
+}
+
+// ratingBar is one row of the rating distribution.
+type ratingBar struct {
+	Stars   int
+	Count   int32
+	Percent float64 // share of all reviews, 0-100, one decimal
+	Label   string  // the text alternative, e.g. "3 reviews rated 5 stars"
+}
+
+// Width is the CSS width of the filled part of the bar.
+func (b ratingBar) Width() string { return strconv.FormatFloat(b.Percent, 'f', -1, 64) + "%" }
+
+// Bars are the five rows of the distribution, 5 stars first. Nil when there is no
+// distribution or no review.
+func (r ratingView) Bars() []ratingBar {
+	if !r.HasStars || r.Count <= 0 {
+		return nil
+	}
+	out := make([]ratingBar, 0, len(r.Stars))
+	for k := len(r.Stars); k >= 1; k-- {
+		c := r.Stars[k-1]
+		noun := " reviews"
+		if c == 1 {
+			noun = " review"
+		}
+		star := " stars"
+		if k == 1 {
+			star = " star"
+		}
+		out = append(out, ratingBar{
+			Stars: k, Count: c,
+			Percent: math.Round(float64(c)/float64(r.Count)*1000) / 10,
+			Label:   strconv.Itoa(int(c)) + noun + " rated " + strconv.Itoa(k) + star,
+		})
+	}
+	return out
 }
 
 // Label is the text for screen readers, e.g. "4.5 out of 5, 12 reviews".
@@ -77,7 +137,9 @@ func (fe *frontendServer) getRatingSummaries(ctx context.Context, log logrus.Fie
 	out := make(map[string]ratingView, len(resp.GetSummaries()))
 	for _, s := range resp.GetSummaries() {
 		if s.GetCount() > 0 {
-			out[s.GetProductId()] = ratingView{Average: s.GetAverage(), Count: s.GetCount()}
+			rv := ratingView{Average: s.GetAverage(), Count: s.GetCount()}
+			rv.Stars, rv.HasStars = starsFromCounts(s.GetStarCounts(), s.GetCount())
+			out[s.GetProductId()] = rv
 		}
 	}
 	return out
@@ -177,21 +239,45 @@ func reviewsURL(id string, page int, fragment bool) string {
 }
 
 // loadReviews fetches one page of reviews and fills the paging links. A failure
-// marks the section unavailable; it never fails the page.
-func (fe *frontendServer) loadReviews(ctx context.Context, log logrus.FieldLogger, id string, page int) reviewsSection {
+// marks the section unavailable; it never fails the page. With withStars the
+// distribution (GetRatingSummary, in parallel) is fetched too: the bars are shown only
+// when it agrees with the review count, a failure just leaves them out.
+func (fe *frontendServer) loadReviews(ctx context.Context, log logrus.FieldLogger, id string, page int, withStars bool) reviewsSection {
 	sec := reviewsSection{Enabled: fe.reviews != nil, Page: page}
 	if !sec.Enabled {
 		return sec
 	}
 	ctx, cancel := context.WithTimeout(ctx, reviewReadTimeout)
 	defer cancel()
+	var summary *pb.RatingSummary
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if !withStars {
+			return
+		}
+		resp, err := fe.reviews.GetRatingSummary(ctx, &pb.GetRatingSummaryRequest{ProductIds: []string{id}})
+		if err != nil {
+			log.WithField("error", err).Warn("rating distribution unavailable, rendering without bars")
+			return
+		}
+		for _, s := range resp.GetSummaries() {
+			if s.GetProductId() == id {
+				summary = s
+			}
+		}
+	}()
 	resp, err := fe.reviews.ListReviews(ctx, &pb.ListReviewsRequest{ProductId: id, Page: int32(page), PageSize: reviewsPageSize}) // #nosec G115 -- bounded in reviewPageParam
+	<-done
 	if err != nil {
 		log.WithField("error", err).Warn("reviews unavailable, rendering without them")
 		sec.Unavailable = true
 		return sec
 	}
 	sec.Rating = ratingView{Average: resp.GetAverageRating(), Count: resp.GetTotal()}
+	if summary != nil && summary.GetCount() == sec.Rating.Count {
+		sec.Rating.Stars, sec.Rating.HasStars = starsFromCounts(summary.GetStarCounts(), summary.GetCount())
+	}
 	for _, r := range resp.GetReviews() {
 		sec.Reviews = append(sec.Reviews, newReviewView(r))
 	}
@@ -209,7 +295,7 @@ func (fe *frontendServer) loadReviews(ctx context.Context, log logrus.FieldLogge
 // <li> items and the next load-more link.
 func (fe *frontendServer) reviewsFragment(w http.ResponseWriter, r *http.Request, id string) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
-	sec := fe.loadReviews(r.Context(), log, id, reviewPageParam(r))
+	sec := fe.loadReviews(r.Context(), log, id, reviewPageParam(r), false)
 	w.Header().Set("Vary", "HX-Request")
 	data := injectCommonTemplateData(r, map[string]interface{}{"reviews": sec})
 	if err := getTemplates().ExecuteTemplate(w, "review_items", data); err != nil {

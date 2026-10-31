@@ -41,6 +41,26 @@
 .review-average-count { color: var(--color-text-muted); font-size: var(--text-sm); }
 .review-newer { margin: 0 0 var(--space-3); }
 
+/* rating distribution: label (5 + star), bar, count; the numbers carry the meaning, the bar is a picture of them */
+.rating-bars { display: grid; gap: var(--space-2); max-width: 28rem; margin: 0 0 var(--space-5); padding: 0; list-style: none; }
+.rating-bar { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr) 2.5rem; align-items: center; gap: var(--space-3); font-size: var(--text-sm); }
+.rating-bar-label { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rating-bar-label .icon-star { width: 14px; height: 14px; fill: var(--color-star); stroke: var(--color-star); }
+.rating-bar-track {
+  display: block;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--color-control-border);
+  border-radius: 999px;
+  background: var(--color-surface-2);
+}
+.rating-bar-fill { display: block; height: 100%; min-width: 0; border-radius: 999px; background: var(--color-star); }
+.rating-bar-count { text-align: right; color: var(--color-text-muted); font-variant-numeric: tabular-nums; }
+@media (forced-colors: active) {
+  .rating-bar-fill { background: Highlight; }
+  .rating-bar-label .icon-star { fill: CanvasText; stroke: CanvasText; }
+}
+
 .review-list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
 .review {
   padding: var(--space-4);
