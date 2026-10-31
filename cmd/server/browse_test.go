@@ -203,6 +203,12 @@ func newFakeFrontend(t *testing.T, cat *fakeCatalog) *frontendServer {
 // newFakeFrontendWith is newFakeFrontend with a cart the test controls.
 func newFakeFrontendWith(t *testing.T, cat *fakeCatalog, cart *fakeCart, co *fakeCheckout) *frontendServer {
 	t.Helper()
+	return newFakeFrontendWithCheckout(t, cat, cart, co)
+}
+
+// newFakeFrontendWithCheckout is newFakeFrontendWith with any checkout server.
+func newFakeFrontendWithCheckout(t *testing.T, cat *fakeCatalog, cart *fakeCart, co pb.CheckoutServiceServer) *frontendServer {
+	t.Helper()
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
 	pb.RegisterProductCatalogServiceServer(srv, cat)
