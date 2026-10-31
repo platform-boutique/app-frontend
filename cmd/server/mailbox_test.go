@@ -199,7 +199,8 @@ func TestEmailsList_AnonymousSessionOrders(t *testing.T) {
 	page := rr.Body.String()
 	assertContains(t, page, "<title>Your emails | "+brand.Name, "1 email, newest first", "Your Everly order o-1",
 		"ada.secret@example.com", `href="/emails/e-1?order=o-1"`, `href="/orders/o-1"`, "#o-1", `datetime="2031-03-04T10:30:00Z"`)
-	assertNotContains(t, page, "o-2", "e-2", "BODY-OF") // somebody else's mail, and no bodies in a list
+	// somebody else's mail (match the links, not bare substrings: the footer prints random UUIDs that can contain "e-2"), and no bodies in a list
+	assertNotContains(t, page, "/emails/e-2", "order=o-2", "/orders/o-2", "#o-2", "BODY-OF")
 
 	// orders by session, placed only, first page of 50
 	if len(e.ord.listCalls) != 1 {

@@ -107,7 +107,7 @@
   box-shadow: var(--shadow-sm);
 }
 .stock-badge.is-out { color: var(--color-danger); }
-.stock-badge.is-low { color: var(--color-accent); }
+.stock-badge.is-low { color: var(--color-warning); }
 .product-card-category { text-transform: none; }
 
 /* Star glyphs are masks, so the colour comes from the theme tokens (an SVG
@@ -207,7 +207,7 @@ a.page-link:hover { border-color: var(--color-border-strong); background: var(--
 .product-info .product-price { margin-bottom: var(--space-2); }
 .stock-status { margin: 0 0 var(--space-4); font-size: var(--text-sm); font-weight: 700; }
 .stock-status.is-in { color: var(--color-success); }
-.stock-status.is-low { color: var(--color-accent); }
+.stock-status.is-low { color: var(--color-warning); }
 .stock-status.is-out { color: var(--color-danger); }
 a.tag { display: inline-block; text-decoration: none; text-transform: none; }
 a.tag:hover { color: var(--color-text); border-color: var(--color-border-strong); }

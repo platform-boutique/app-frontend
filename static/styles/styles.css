@@ -29,6 +29,7 @@
   --color-accent-soft: #dfeadf; /* hero, soft badges */
   --color-sage: #e3e8dd; /* quiet green-grey panels (ad card, hero glow, departments) */
   --color-sage-strong: #3f5e4b; /* text and icons on sage and surface */
+  --color-warning: #8a5a00; /* low-stock and other cautions (text): amber-brown, clearly not the brand green nor the danger red */
   --color-brass: #a58334; /* stars, ad and hero highlights (graphics, not text); the approved #b08d3c gave 2.8:1 on the oat page */
   --color-danger: #a8261d;
   --color-danger-soft: #fbe9e6;
@@ -114,6 +115,7 @@
     --color-accent-soft: #1c2c24;
     --color-sage: #1a2620;
     --color-sage-strong: #a9cdb5;
+    --color-warning: #e6b85c;
     --color-brass: #d4b25e;
     --color-danger: #ff8f84;
     --color-danger-soft: #3a1d1a;
@@ -147,6 +149,7 @@
   --color-accent-soft: #1c2c24;
   --color-sage: #1a2620;
   --color-sage-strong: #a9cdb5;
+  --color-warning: #e6b85c;
   --color-brass: #d4b25e;
   --color-danger: #ff8f84;
   --color-danger-soft: #3a1d1a;

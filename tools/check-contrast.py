@@ -47,6 +47,8 @@ PAIRS = [
     ("focus", "bg", UI, "focus ring on the page"),
     ("focus", "surface", UI, "focus ring on cards"),
     ("accent", "bg", UI, "logo on the page"),
+    ("warning", "bg", TEXT, "low-stock text on the page"),
+    ("warning", "surface", TEXT, "low-stock text on cards"),
     ("brass", "surface", UI, "stars and brass graphics on cards"),
     ("brass", "bg", UI, "stars and brass graphics on the page"),
 ]
