@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <style>
-    .a { fill: #a8431f; stroke: none; }
-    .h { stroke: #a8431f; }
+    .a { fill: #1f5a43; stroke: none; }
+    .h { stroke: #1f5a43; }
     .e { stroke: #ffffff; }
-    @media (prefers-color-scheme: dark) { .a { fill: #f09a6f; } .h { stroke: #f09a6f; } .e { stroke: #1d120c; } }
+    @media (prefers-color-scheme: dark) { .a { fill: #7fcf9f; } .h { stroke: #7fcf9f; } .e { stroke: #0c1a12; } }
   </style>
   <path class="h" d="M15 25C15 9 49 9 49 25" fill="none" stroke-width="4.2" stroke-linecap="round"/>
   <path class="a" d="M9 24h46l2.5 27a8 8 0 0 1-8 9h-35a8 8 0 0 1-8-9z"/>
