@@ -39,16 +39,17 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── main.go          # entrypoint: env wiring, gRPC dials, router, middleware chain, HTTP server
 │   ├── handlers.go      # page handlers (home, product, cart, checkout, currency, logout, product-meta)
 │   ├── rpc.go           # gRPC client helpers for each backend
+│   ├── accounts.go      # accounts: shop_auth middleware, register/login/account/logout, claim + cart merge, safe `next`
 │   ├── middleware.go    # request logging + session-id cookie
 │   ├── otlp.go          # OTLP/gRPC setup: trace, metric (Prometheus bridge) and log (logrus hook) providers
 │   ├── telemetry.go     # Prometheus HTTP metrics, /metrics server, route wrapping, Pyroscope
 │   └── *_test.go        # unit tests for handlers, middleware, rpc helpers and telemetry
 ├── internal/validator/  # form payload validation (go-playground/validator) + tests
 ├── money/               # Money arithmetic helpers + tests
-├── genproto/            # generated gRPC stubs for all backend services (demo.pb.go, demo_grpc.pb.go)
+├── genproto/            # generated gRPC stubs for all backend services (demo.pb.go, demo_grpc.pb.go; orders/ and users/ are packages of their own)
 ├── templates/
 │   ├── header.html, footer.html  # page shell: theme script, header (brand, nav, currency, theme toggle, cart), footer
-│   ├── home.html, product.html, cart.html, order.html, error.html  # pages
+│   ├── home.html, product.html, cart.html, order.html, error.html, account.html (sign in, register, account)  # pages
 │   ├── ad.html, recommendations.html  # shared blocks
 │   ├── icons.html       # inline SVG brand mark and icons (no image files)
 │   └── catalog.html     # department nav and tiles, search/sort toolbar, results fragment, pagination, product card

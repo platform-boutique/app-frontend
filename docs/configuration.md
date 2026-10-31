@@ -10,6 +10,7 @@
 | `SHIPPING_SERVICE_ADDR` | **Yes** | — | e.g. `shipping-service:50051` |
 | `AD_SERVICE_ADDR` | **Yes** | — | e.g. `ad-service:9555` |
 | `ORDER_SERVICE_ADDR` | No | `order-service:8085` | `host:port` of order-service (gRPC). Optional: lazy connection; while it is unreachable only `/orders` and `/orders/{id}` answer `503`. Set to an empty string to switch order history and tracking off (routes `404`, no Orders link, no "Track your order" button) |
+| `USER_SERVICE_ADDR` | No | `user-service:8086` | `host:port` of user-service (gRPC). Optional: lazy connection; while it is unreachable the shop works as for an anonymous visitor and only the account pages, the orders pages and checkout of a signed-in visitor answer `503`. Set to an empty string to switch accounts off (routes `404`, no Sign in link). See the README section "Accounts" |
 | `REVIEW_SERVICE_ADDR` | No | `review-service:8084` | `host:port` of review-service (gRPC). Optional: if it is unreachable the pages render without stars and without reviews (see "Ratings and reviews"). Set to an empty string to switch ratings and reviews off completely |
 | `PORT` | No | `8080` | HTTP listen port |
 | `LISTEN_ADDR` | No | `` (all interfaces) | Bind address; leave empty in containers |
