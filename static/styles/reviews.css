@@ -26,7 +26,7 @@
 @media (min-width: 860px) { .reviews-layout { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
 
 .review-average { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin: 0 0 var(--space-4); }
-.review-average-num { font-family: var(--font-serif); font-size: var(--text-3xl); line-height: 1; font-weight: 600; }
+.review-average-num { font-family: var(--font-display); font-size: var(--text-3xl); line-height: 1; font-weight: 700; }
 .review-average-count { color: var(--color-text-muted); font-size: var(--text-sm); }
 .review-newer { margin: 0 0 var(--space-3); }
 

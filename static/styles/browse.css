@@ -48,7 +48,7 @@
   transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
 }
 .dept-tile:hover { color: var(--color-text); border-color: var(--color-border-strong); box-shadow: var(--shadow-md); transform: translateY(-2px); }
-.dept-name { font-family: var(--font-serif); font-size: var(--text-lg); font-weight: 600; line-height: 1.2; }
+.dept-name { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 700; line-height: 1.2; }
 .dept-count { font-size: var(--text-xs); color: var(--color-text-muted); }
 /* a soft colour band per department */
 .dept-tile { background-image: linear-gradient(160deg, var(--dept-tint, var(--color-surface-2)) 0%, transparent 70%); }
