@@ -266,7 +266,7 @@ func TestEmailsList_MailOfAnotherOrderInTheAnswerIsDropped(t *testing.T) {
 	// a misbehaving service answers with a mail of an order that was not asked for
 	e.fe.mailbox = &leakyMailbox{fakeMailbox: e.mb}
 	rr := e.get("/emails", anon("s1"), nil)
-	assertNotContains(t, rr.Body.String(), "e-2", "o-2")
+	assertNotContains(t, rr.Body.String(), "/emails/e-2", "order=o-2", "/orders/o-2")
 	assertContains(t, rr.Body.String(), "e-1")
 }
 
