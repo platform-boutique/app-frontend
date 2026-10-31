@@ -7,8 +7,10 @@
 /* header: department links; on phones the nav row scrolls horizontally */
 .site-nav ul { flex-wrap: nowrap; }
 .site-nav li { flex: none; }
-@media (min-width: 560px) and (max-width: 1099px) {
-  /* not enough room next to the brand and actions: keep Shop + All products only */
+/* the brand and the action buttons never shrink (the brand name must not turn into "Ev…", "Sign in" into "Sign…") */
+.brand, .header-actions > * { flex: none; }
+@media (min-width: 560px) and (max-width: 1359px) {
+  /* not enough room next to the brand and the actions (Orders and the account name have labels from 720px): keep Shop + All products only */
   .site-nav li:not(:first-child):not(.nav-all) { display: none; }
 }
 
