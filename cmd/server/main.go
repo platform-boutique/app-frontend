@@ -17,6 +17,7 @@ import (
 
 	pb "frontend/genproto"
 	pbo "frontend/genproto/orders"
+	pbu "frontend/genproto/users"
 )
 
 const (
@@ -27,6 +28,7 @@ const (
 	cookiePrefix    = "shop_"
 	cookieSessionID = cookiePrefix + "session-id"
 	cookieCurrency  = cookiePrefix + "currency"
+	cookieAuth      = cookiePrefix + "auth"
 )
 
 var (
@@ -75,6 +77,11 @@ type frontendServer struct {
 	orderSvcAddr string
 	orderSvcConn *grpc.ClientConn
 	orders       pbo.OrderServiceClient
+
+	// optional: nil when USER_SERVICE_ADDR is set to an empty string (accounts off)
+	userSvcAddr string
+	userSvcConn *grpc.ClientConn
+	users       pbu.UserServiceClient
 
 	nav navCache
 }
@@ -155,6 +162,15 @@ func main() {
 		log.Info("ORDER_SERVICE_ADDR is empty: order history and tracking are off")
 	}
 
+	// user-service is optional as well: lazy connection, only the account pages and the identity of a request depend on it
+	if svc.userSvcAddr = usersAddrFromEnv(); svc.userSvcAddr != "" {
+		mustConnGRPC(&svc.userSvcConn, svc.userSvcAddr)
+		svc.users = pbu.NewUserServiceClient(svc.userSvcConn)
+		accountsEnabled = true
+	} else {
+		log.Info("USER_SERVICE_ADDR is empty: accounts are off")
+	}
+
 	// --- Router ---
 	r := mux.NewRouter()
 	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
@@ -165,6 +181,7 @@ func main() {
 	r.HandleFunc(baseUrl+"/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/setCurrency", svc.setCurrencyHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/logout", svc.logoutHandler).Methods(http.MethodGet)
+	svc.accountRoutes(r)
 	r.HandleFunc(baseUrl+"/orders", svc.ordersHistoryHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/orders/{id}", svc.orderTrackingHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/cart/checkout", svc.placeOrderHandler).Methods(http.MethodPost)
@@ -177,6 +194,7 @@ func main() {
 	wrapRoutes(r)
 
 	var handler http.Handler = r
+	handler = svc.withUser(handler)                    // who is asking: shop_auth cookie -> user-service GetSession
 	handler = &logHandler{log: log, next: handler}     // structured logging
 	handler = ensureSessionID(handler)                 // session ID cookie
 	handler = otelhttp.NewHandler(handler, "frontend") // OTel tracing

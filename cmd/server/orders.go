@@ -386,12 +386,20 @@ func (fe *frontendServer) ordersHistoryHandler(w http.ResponseWriter, r *http.Re
 		fe.renderHTTPError(log, r, w, errors.New("orders are not enabled"), http.StatusNotFound)
 		return
 	}
+	if fe.identityUnavailable(log, r, w) {
+		return
+	}
 	page := ordersPageParam(r)
+	// owner: the signed-in user's orders, or the ones of the anonymous session
+	owner := pbo.ListOrdersRequest{SessionId: sessionID(r)}
+	if u := userOf(r); u != nil {
+		owner = pbo.ListOrdersRequest{UserId: u.ID}
+	}
 	list := func(p int) (*pbo.ListOrdersResponse, error) {
 		ctx, cancel := context.WithTimeout(r.Context(), orderReadTimeout)
 		defer cancel()
 		return fe.orders.ListOrders(ctx, &pbo.ListOrdersRequest{
-			SessionId: sessionID(r), Page: int32(p), PageSize: ordersPageSize, PlacedOnly: true, // #nosec G115 -- bounded in ordersPageParam
+			SessionId: owner.SessionId, UserId: owner.UserId, Page: int32(p), PageSize: ordersPageSize, PlacedOnly: true, // #nosec G115 -- bounded in ordersPageParam
 		})
 	}
 	resp, err := list(page)
@@ -470,21 +478,29 @@ func (fe *frontendServer) orderTrackingHandler(w http.ResponseWriter, r *http.Re
 		fe.renderHTTPError(log, r, w, errors.New("malformed order id"), http.StatusNotFound)
 		return
 	}
-	sid := sessionID(r)
-	if sid == "" {
+	if fe.identityUnavailable(log, r, w) {
+		return
+	}
+	// the guard is the signed-in user, or the session of an anonymous visitor
+	req := &pbo.GetOrderRequest{OrderId: id}
+	owns := func(o *pbo.Order) bool { return o.GetSessionId() == req.SessionId }
+	if u := userOf(r); u != nil {
+		req.UserId = u.ID
+		owns = func(o *pbo.Order) bool { return o.GetUserId() == req.UserId }
+	} else if req.SessionId = sessionID(r); req.SessionId == "" {
 		fe.renderHTTPError(log, r, w, errors.New("no session"), http.StatusNotFound)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), orderReadTimeout)
 	defer cancel()
-	o, err := fe.orders.GetOrder(ctx, &pbo.GetOrderRequest{OrderId: id, SessionId: sid})
+	o, err := fe.orders.GetOrder(ctx, req)
 	if err != nil {
 		fe.failOrders(log, r, w, err, "could not get order")
 		return
 	}
-	if o.GetSessionId() != sid {
+	if !owns(o) {
 		// the service guards this already; a second look costs nothing and keeps a wrong order off the page
-		fe.renderHTTPError(log, r, w, errors.New("order belongs to another session"), http.StatusNotFound)
+		fe.renderHTTPError(log, r, w, errors.New("order belongs to somebody else"), http.StatusNotFound)
 		return
 	}
 	view := newTrackView(o)

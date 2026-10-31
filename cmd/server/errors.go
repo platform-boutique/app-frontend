@@ -85,6 +85,10 @@ func classifyError(err error, code int) errorPage {
 	if errors.As(err, &ou) {
 		return errorPage{http.StatusServiceUnavailable, "Orders are not available", msgOrdersUnavailable}
 	}
+	var uu *usersUnavailableError
+	if errors.As(err, &uu) {
+		return errorPage{http.StatusServiceUnavailable, "Accounts are not available", msgAccountsUnavailable}
+	}
 	var gs interface{ GRPCStatus() *status.Status }
 	if errors.As(err, &gs) {
 		st := gs.GRPCStatus()

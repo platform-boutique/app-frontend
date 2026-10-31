@@ -34,6 +34,8 @@ type fakeOrders struct {
 	err       error // returned by every call when set
 	block     bool  // wait for the caller's deadline, like a hung service
 	getHook   func(*pbo.Order) *pbo.Order
+	claims    []*pbo.ClaimOrdersRequest
+	claimErr  error // returned by ClaimOrders when set
 }
 
 func (f *fakeOrders) wait(ctx context.Context) error {
@@ -56,6 +58,9 @@ func (f *fakeOrders) GetOrder(ctx context.Context, in *pbo.GetOrderRequest, _ ..
 			if in.SessionId != "" && o.SessionId != in.SessionId {
 				break // same answer as for an unknown id
 			}
+			if in.UserId != "" && o.UserId != in.UserId {
+				break
+			}
 			if f.getHook != nil {
 				return f.getHook(o), nil
 			}
@@ -74,7 +79,10 @@ func (f *fakeOrders) ListOrders(ctx context.Context, in *pbo.ListOrdersRequest, 
 	}
 	var all []*pbo.Order
 	for _, o := range f.orders {
-		if o.SessionId != in.SessionId {
+		if in.UserId != "" && o.UserId != in.UserId {
+			continue
+		}
+		if in.UserId == "" && o.SessionId != in.SessionId {
 			continue
 		}
 		if in.PlacedOnly && (o.Status == pbo.OrderStatus_ORDER_STATUS_PENDING || o.Status == pbo.OrderStatus_ORDER_STATUS_FAILED) {
@@ -91,6 +99,27 @@ func (f *fakeOrders) ListOrders(ctx context.Context, in *pbo.ListOrdersRequest, 
 	}
 	lo, hi := min((page-1)*size, len(all)), min(page*size, len(all))
 	return &pbo.ListOrdersResponse{Orders: all[lo:hi], Total: int32(len(all))}, nil // #nosec G115 -- test data
+}
+
+// ClaimOrders behaves like order-service: the orders of the session that have no user yet get this one.
+func (f *fakeOrders) ClaimOrders(_ context.Context, in *pbo.ClaimOrdersRequest, _ ...grpc.CallOption) (*pbo.ClaimOrdersResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.claims = append(f.claims, in)
+	if f.claimErr != nil {
+		return nil, f.claimErr
+	}
+	if in.SessionId == "" || in.UserId == "" {
+		return nil, status.Error(codes.InvalidArgument, "session_id and user_id are required")
+	}
+	n := int32(0)
+	for _, o := range f.orders {
+		if o.SessionId == in.SessionId && o.UserId == "" {
+			o.UserId = in.UserId
+			n++
+		}
+	}
+	return &pbo.ClaimOrdersResponse{Claimed: n}, nil
 }
 
 func (f *fakeOrders) CreateOrder(context.Context, *pbo.CreateOrderRequest, ...grpc.CallOption) (*pbo.Order, error) {
@@ -542,6 +571,10 @@ func (l *leakyOrders) CreateOrder(ctx context.Context, in *pbo.CreateOrderReques
 
 func (l *leakyOrders) ConfirmOrder(ctx context.Context, in *pbo.ConfirmOrderRequest, o ...grpc.CallOption) (*pbo.Order, error) {
 	return l.inner.ConfirmOrder(ctx, in, o...)
+}
+
+func (l *leakyOrders) ClaimOrders(ctx context.Context, in *pbo.ClaimOrdersRequest, o ...grpc.CallOption) (*pbo.ClaimOrdersResponse, error) {
+	return l.inner.ClaimOrders(ctx, in, o...)
 }
 
 func (l *leakyOrders) FailOrder(ctx context.Context, in *pbo.FailOrderRequest, o ...grpc.CallOption) (*pbo.Order, error) {

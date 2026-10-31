@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"unicode/utf8"
 
@@ -99,19 +100,53 @@ type fakeCart struct {
 	items   []*pb.CartItem
 	added   []*pb.CartItem
 	emptied int
+
+	// per-user carts: when carts is not nil the cart of each key is kept apart (accounts tests);
+	// getKeys / emptyKeys record whose cart was read / emptied
+	mu        sync.Mutex
+	carts     map[string][]*pb.CartItem
+	getKeys   []string
+	emptyKeys []string
+	addErr    error // AddItem fails with this
 }
 
-func (f *fakeCart) GetCart(context.Context, *pb.GetCartRequest) (*pb.Cart, error) {
+func (f *fakeCart) GetCart(_ context.Context, r *pb.GetCartRequest) (*pb.Cart, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getKeys = append(f.getKeys, r.UserId)
+	if f.carts != nil {
+		return &pb.Cart{UserId: r.UserId, Items: append([]*pb.CartItem(nil), f.carts[r.UserId]...)}, nil
+	}
 	return &pb.Cart{Items: f.items}, nil
 }
 
 func (f *fakeCart) AddItem(_ context.Context, r *pb.AddItemRequest) (*pb.Empty, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.addErr != nil {
+		return nil, f.addErr
+	}
 	f.added = append(f.added, r.Item)
+	if f.carts != nil {
+		for _, it := range f.carts[r.UserId] {
+			if it.ProductId == r.Item.ProductId {
+				it.Quantity += r.Item.Quantity
+				return &pb.Empty{}, nil
+			}
+		}
+		f.carts[r.UserId] = append(f.carts[r.UserId], &pb.CartItem{ProductId: r.Item.ProductId, Quantity: r.Item.Quantity})
+	}
 	return &pb.Empty{}, nil
 }
 
-func (f *fakeCart) EmptyCart(context.Context, *pb.EmptyCartRequest) (*pb.Empty, error) {
+func (f *fakeCart) EmptyCart(_ context.Context, r *pb.EmptyCartRequest) (*pb.Empty, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.emptied++
+	f.emptyKeys = append(f.emptyKeys, r.UserId)
+	if f.carts != nil {
+		delete(f.carts, r.UserId)
+	}
 	return &pb.Empty{}, nil
 }
 
@@ -121,11 +156,13 @@ type fakeCheckout struct {
 	err     error
 	placed  int
 	address *pb.Address // of the last PlaceOrder
+	last    *pb.PlaceOrderRequest
 }
 
 func (f *fakeCheckout) PlaceOrder(_ context.Context, in *pb.PlaceOrderRequest) (*pb.PlaceOrderResponse, error) {
 	f.placed++
 	f.address = in.Address
+	f.last = in
 	if f.err != nil {
 		return nil, f.err
 	}

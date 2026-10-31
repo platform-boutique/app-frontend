@@ -15,6 +15,7 @@
                         <li><a href="{{ $.baseUrl }}/">Shop</a></li>
                         <li><a href="{{ $.baseUrl }}/cart">Cart</a></li>
                         {{ if $.orders_enabled }}<li><a href="{{ $.baseUrl }}/orders">Your orders</a></li>{{ end }}
+                        {{ if $.accounts_enabled }}<li>{{ if $.user }}<a href="{{ $.baseUrl }}/account">Your account</a>{{ else }}<a href="{{ $.baseUrl }}/login">Sign in</a>{{ end }}</li>{{ end }}
                     </ul>
                 </nav>
             </div>

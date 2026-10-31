@@ -73,7 +73,7 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	if !fragment {
 		wg.Add(2)
 		go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
-		go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+		go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), cartKey(r)) }()
 	}
 	wg.Wait()
 
@@ -198,7 +198,7 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 	go func() { defer wg.Done(); reviews = fe.loadReviews(r.Context(), log, id, reviewPageParam(r)) }()
 	go func() { defer wg.Done(); p, prodErr = fe.getProduct(r.Context(), id) }()
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
-	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), cartKey(r)) }()
 	wg.Wait()
 
 	if prodErr != nil {
@@ -236,7 +236,7 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 	go func() {
 		defer wg.Done()
 		var err error
-		recommendations, err = fe.getRecommendations(r.Context(), sessionID(r), []string{id})
+		recommendations, err = fe.getRecommendations(r.Context(), cartKey(r), []string{id})
 		if err != nil {
 			log.WithField("error", err).Warn("failed to get product recommendations")
 		}
@@ -300,7 +300,7 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 		fe.renderHTTPError(log, r, w, errors.Errorf("%s is out of stock.", p.GetName()), http.StatusUnprocessableEntity)
 		return
 	}
-	cart, err := fe.getCart(r.Context(), sessionID(r))
+	cart, err := fe.getCart(r.Context(), cartKey(r))
 	if err != nil {
 		fe.renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve cart"), http.StatusInternalServerError)
 		return
@@ -319,7 +319,7 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 		fe.renderHTTPError(log, r, w, msg, http.StatusUnprocessableEntity)
 		return
 	}
-	if err := fe.insertCart(r.Context(), sessionID(r), p.GetId(), int32(payload.Quantity)); err != nil { // #nosec G115 -- bounds checked above
+	if err := fe.insertCart(r.Context(), cartKey(r), p.GetId(), int32(payload.Quantity)); err != nil { // #nosec G115 -- bounds checked above
 		fe.renderHTTPError(log, r, w, errors.Wrap(err, "failed to add to cart"), http.StatusInternalServerError)
 		return
 	}
@@ -330,7 +330,7 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 func (fe *frontendServer) emptyCartHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("emptying cart")
-	if err := fe.emptyCart(r.Context(), sessionID(r)); err != nil {
+	if err := fe.emptyCart(r.Context(), cartKey(r)); err != nil {
 		fe.renderHTTPError(log, r, w, errors.Wrap(err, "failed to empty cart"), http.StatusInternalServerError)
 		return
 	}
@@ -352,7 +352,7 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
-	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), cartKey(r)) }()
 	wg.Wait()
 
 	if currErr != nil {
@@ -384,7 +384,7 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 	go func() {
 		defer wg.Done()
 		var err error
-		recommendations, err = fe.getRecommendations(r.Context(), sessionID(r), cartIDs(liveCart))
+		recommendations, err = fe.getRecommendations(r.Context(), cartKey(r), cartIDs(liveCart))
 		if err != nil {
 			log.WithField("error", err).Warn("failed to get product recommendations")
 		}
@@ -448,6 +448,9 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("placing order")
+	if fe.identityUnavailable(log, r, w) {
+		return // a signed-in visitor whose cart we cannot reach must not end up ordering as a guest
+	}
 
 	var (
 		email         = r.FormValue("email")
@@ -497,7 +500,8 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 				CreditCardExpirationYear:  int32(payload.CcYear),  // #nosec G115 -- parsed with ParseInt bitSize 32, fits in int32
 				CreditCardCvv:             int32(payload.CcCVV),   // #nosec G115 -- parsed with ParseInt bitSize 32, fits in int32
 			},
-			UserId:       sessionID(r),
+			UserId:       cartKey(r),
+			AccountId:    accountID(r),
 			UserCurrency: currentCurrency(r),
 			Address: &pb.Address{
 				StreetAddress: payload.StreetAddress,
@@ -521,7 +525,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 	)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); recommendations, _ = fe.getRecommendations(r.Context(), sessionID(r), nil) }()
+	go func() { defer wg.Done(); recommendations, _ = fe.getRecommendations(r.Context(), cartKey(r), nil) }()
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
 	wg.Wait()
 
@@ -552,7 +556,14 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 func (fe *frontendServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("logging out")
+	if token := authToken(r); token != "" {
+		fe.revokeToken(r.Context(), log, token)
+		expireAuthCookie(w)
+	}
 	for _, c := range r.Cookies() {
+		if c.Name == cookieAuth {
+			continue // expired above, with its own flags
+		}
 		c.Expires = time.Now().Add(-time.Hour * 24 * 365)
 		c.MaxAge = -1
 		http.SetCookie(w, c)
@@ -625,15 +636,19 @@ func (fe *frontendServer) chooseAd(ctx context.Context, ctxKeys []string, log lo
 
 func injectCommonTemplateData(r *http.Request, payload map[string]interface{}) map[string]interface{} {
 	data := map[string]interface{}{
-		"session_id":      sessionID(r),
-		"request_id":      r.Context().Value(ctxKeyRequestID{}),
-		"user_currency":   currentCurrency(r),
-		"brand_name":      brand.Name,
-		"brand_tagline":   brand.Tagline,
-		"frontendMessage": frontendMessage,
-		"currentYear":     time.Now().Year(),
-		"baseUrl":         baseUrl,
-		"orders_enabled":  ordersEnabled,
+		"session_id":       sessionID(r),
+		"request_id":       r.Context().Value(ctxKeyRequestID{}),
+		"user_currency":    currentCurrency(r),
+		"brand_name":       brand.Name,
+		"brand_tagline":    brand.Tagline,
+		"frontendMessage":  frontendMessage,
+		"currentYear":      time.Now().Year(),
+		"baseUrl":          baseUrl,
+		"orders_enabled":   ordersEnabled,
+		"accounts_enabled": accountsEnabled,
+	}
+	if u := userOf(r); u != nil {
+		data["user"] = u
 	}
 	for k, v := range payload {
 		data[k] = v
@@ -653,6 +668,14 @@ func sessionID(r *http.Request) string {
 	v := r.Context().Value(ctxKeySessionID{})
 	if v != nil {
 		return v.(string)
+	}
+	return ""
+}
+
+// accountID is the signed-in user's id for PlaceOrderRequest.account_id, "" for an anonymous visitor.
+func accountID(r *http.Request) string {
+	if u := userOf(r); u != nil {
+		return u.ID
 	}
 	return ""
 }
