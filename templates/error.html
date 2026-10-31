@@ -8,7 +8,9 @@
             <p>{{ .message }}</p>
             <p class="muted">HTTP status {{ .status_code }} {{ .status }}</p>
             <div class="notice-actions">
-                <a class="btn btn-primary" href="{{ $.baseUrl }}/">Back to the shop</a>
+                {{ if .cart_link }}<a class="btn btn-primary" href="{{ $.baseUrl }}/cart">Back to your cart</a>
+                <a class="btn btn-secondary" href="{{ $.baseUrl }}/">Back to the shop</a>
+                {{ else }}<a class="btn btn-primary" href="{{ $.baseUrl }}/">Back to the shop</a>{{ end }}
             </div>
         </div>
     </div>

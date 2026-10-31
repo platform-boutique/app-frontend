@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	pb "frontend/genproto"
 	pbo "frontend/genproto/orders"
 	pbu "frontend/genproto/users"
 )
@@ -558,7 +559,10 @@ func (fe *frontendServer) mergeCart(ctx context.Context, log logrus.FieldLogger,
 		}
 		want[it.GetProductId()] += int64(it.GetQuantity())
 	}
-	added := 0
+	// the products first (nothing is added to the user's cart before they are all known), then the
+	// live stock of all of them in one call; without inventory-service the catalogue's stock caps the lines
+	products := make(map[string]*pb.Product, len(order))
+	var found []*pb.Product
 	for _, id := range order {
 		p, err := fe.getProduct(ctx, id)
 		if status.Code(err) == codes.NotFound {
@@ -568,7 +572,17 @@ func (fe *frontendServer) mergeCart(ctx context.Context, log logrus.FieldLogger,
 			log.WithField("error", err).Warn("could not check the stock while merging the cart, leaving the anonymous cart as it is")
 			return
 		}
-		room := int64(p.GetStock()) - have[id]
+		products[id] = p
+		found = append(found, p)
+	}
+	stock := fe.overlayStock(ctx, log, found...)
+	added := 0
+	for _, id := range order {
+		p, ok := products[id]
+		if !ok {
+			continue
+		}
+		room := int64(stock.of(p)) - have[id]
 		qty := min(want[id], room, int64(1<<31-1))
 		if qty <= 0 {
 			continue

@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb "frontend/genproto"
+	pbi "frontend/genproto/inventory"
 	pbo "frontend/genproto/orders"
 	pbu "frontend/genproto/users"
 )
@@ -82,6 +83,11 @@ type frontendServer struct {
 	userSvcAddr string
 	userSvcConn *grpc.ClientConn
 	users       pbu.UserServiceClient
+
+	// optional: nil when INVENTORY_SERVICE_ADDR is set to an empty string (the catalogue's stock is used)
+	inventorySvcAddr string
+	inventorySvcConn *grpc.ClientConn
+	inventory        pbi.InventoryServiceClient
 
 	nav navCache
 }
@@ -169,6 +175,14 @@ func main() {
 		accountsEnabled = true
 	} else {
 		log.Info("USER_SERVICE_ADDR is empty: accounts are off")
+	}
+
+	// inventory-service is optional as well: lazy connection, without it (or while it is down) the catalogue's stock is shown
+	if svc.inventorySvcAddr = inventoryAddrFromEnv(); svc.inventorySvcAddr != "" {
+		mustConnGRPC(&svc.inventorySvcConn, svc.inventorySvcAddr)
+		svc.inventory = pbi.NewInventoryServiceClient(svc.inventorySvcConn)
+	} else {
+		log.Info("INVENTORY_SERVICE_ADDR is empty: live stock is off, the catalogue's stock is used")
 	}
 
 	// --- Router ---

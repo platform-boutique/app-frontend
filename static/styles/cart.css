@@ -45,6 +45,9 @@
 .cart-item-name a { color: var(--color-text); text-decoration: none; }
 .cart-item-name a:hover { color: var(--color-accent); text-decoration: underline; }
 .cart-item-sku { overflow-wrap: anywhere; }
+.cart-item-body p.cart-item-note { margin-top: var(--space-2); font-weight: 700; }
+.cart-item-body p.cart-item-note.is-low { color: var(--color-accent); }
+.cart-item-body p.cart-item-note.is-short { color: var(--color-danger); }
 .cart-item-price { margin: 0; font-weight: 700; white-space: nowrap; }
 
 .cart-totals { margin: var(--space-4) 0 0; }

@@ -79,12 +79,15 @@ func TestTemplates_CartWithItems(t *testing.T) {
 		Item     *pb.Product
 		Quantity int32
 		Price    *pb.Money
+		Left     int32
+		Short    bool
+		Low      bool
 	}
 	html := renderPage(t, "cart", map[string]interface{}{
 		"show_currency":    true,
 		"currencies":       []string{"USD"},
 		"cart_size":        1,
-		"items":            []cartItemView{{sampleProduct("MUG1"), 1, &pb.Money{CurrencyCode: "USD", Units: 12}}},
+		"items":            []cartItemView{{Item: sampleProduct("MUG1"), Quantity: 1, Price: &pb.Money{CurrencyCode: "USD", Units: 12}, Left: 20}},
 		"shipping_cost":    &pb.Money{CurrencyCode: "USD", Units: 5},
 		"total_cost":       &pb.Money{CurrencyCode: "USD", Units: 17},
 		"expiration_years": []int{2026, 2027},

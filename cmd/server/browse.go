@@ -145,8 +145,10 @@ type stockInfo struct {
 	N   int32
 }
 
-func stockOf(p *pb.Product) stockInfo {
-	n := p.GetStock()
+func stockOf(p *pb.Product) stockInfo { return stockInfoOf(p.GetStock()) }
+
+// stockInfoOf is the badge for n items left: out of stock, "Only N left" up to lowStockLimit, nothing above.
+func stockInfoOf(n int32) stockInfo {
 	return stockInfo{Out: n <= 0, Low: n > 0 && n <= lowStockLimit, N: n}
 }
 

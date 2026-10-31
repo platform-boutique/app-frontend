@@ -47,6 +47,8 @@
                         <h2 class="cart-item-name"><a href="{{ $.baseUrl }}/product/{{ .Item.Id }}">{{ .Item.Name }}</a></h2>
                         <p class="cart-item-sku">SKU #{{ .Item.Id }}</p>
                         <p class="cart-item-qty">Quantity: {{ .Quantity }}</p>
+                        {{ if .Short }}<p class="cart-item-note is-short" role="status">{{ if le .Left 0 }}Sold out. This item can not be ordered right now.{{ else }}Only {{ .Left }} left. You have {{ .Quantity }} in your cart, so this order would be refused: empty the cart and add {{ .Left }}.{{ end }}</p>
+                        {{ else if .Low }}<p class="cart-item-note is-low">Only {{ .Left }} left</p>{{ end }}
                     </div>
                     <p class="cart-item-price">{{ renderMoney .Price }}</p>
                 </li>
@@ -67,6 +69,7 @@
 
         <section class="checkout" aria-labelledby="checkout-title">
             <form class="checkout-form" action="{{ $.baseUrl }}/cart/checkout" method="POST">
+                <input type="hidden" name="idempotency_key" value="{{ $.idempotency_key }}">
                 <h2 id="checkout-title">Shipping address</h2>
 
                 <div class="form-grid">

@@ -101,8 +101,10 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 		ids[i] = p.GetId()
 	}
 	var ratings map[string]ratingView
-	wg.Add(1)
+	var stock liveStock
+	wg.Add(2)
 	go func() { defer wg.Done(); ratings = fe.getRatingSummaries(r.Context(), log, ids) }()
+	go func() { defer wg.Done(); stock = fe.overlayStock(r.Context(), log, products...) }()
 
 	// convert all product prices in parallel
 	type priceResult struct {
@@ -126,7 +128,7 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 			fe.renderHTTPError(log, r, w, errors.Wrapf(prices[i].err, "failed to do currency conversion for product %s", p.GetId()), http.StatusInternalServerError)
 			return
 		}
-		ps[i] = productCard{Item: p, Price: prices[i].price, Image: cardImage(p), DeptName: deptName(cats, p.GetDepartment()), Stock: stockOf(p)}
+		ps[i] = productCard{Item: p, Price: prices[i].price, Image: cardImage(p), DeptName: deptName(cats, p.GetDepartment()), Stock: stock.info(p)}
 		if rv, ok := ratings[p.GetId()]; ok {
 			ps[i].Rating = &rv
 		}
@@ -221,7 +223,9 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 		cats            []*pb.Category
 		priceErr        error
 	)
-	wg.Add(3)
+	var stock liveStock
+	wg.Add(4)
+	go func() { defer wg.Done(); stock = fe.overlayStock(r.Context(), log, p) }()
 	go func() {
 		defer wg.Done()
 		var err error
@@ -248,7 +252,7 @@ func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	product := productPage{Item: p, Price: price, Images: productImages(p), Category: findCategory(cats, p.GetDepartment()), Stock: stockOf(p), Quantities: quantityOptions(p.GetStock())}
+	product := productPage{Item: p, Price: price, Images: productImages(p), Category: findCategory(cats, p.GetDepartment()), Stock: stock.info(p), Quantities: quantityOptions(stock.of(p))}
 	if form != nil {
 		reviews.Form = *form
 	}
@@ -295,8 +299,9 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 		fe.renderHTTPError(log, r, w, errors.New("quantity exceeds maximum allowed value"), http.StatusBadRequest)
 		return
 	}
-	// stock is not decremented before inventory exists, but one cart can not hold more than is in stock
-	if p.GetStock() <= 0 {
+	// one cart can not hold more than is free right now: the live stock when inventory-service answers, else the catalogue's
+	stock := fe.overlayStock(r.Context(), log, p).of(p)
+	if stock <= 0 {
 		fe.renderHTTPError(log, r, w, errors.Errorf("%s is out of stock.", p.GetName()), http.StatusUnprocessableEntity)
 		return
 	}
@@ -311,10 +316,10 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 			inCart += int64(item.GetQuantity())
 		}
 	}
-	if inCart+int64(payload.Quantity) > int64(p.GetStock()) {
-		msg := errors.Errorf("Only %d of %s in stock.", p.GetStock(), p.GetName())
+	if inCart+int64(payload.Quantity) > int64(stock) {
+		msg := errors.Errorf("Only %d of %s in stock.", stock, p.GetName())
 		if inCart > 0 {
-			msg = errors.Errorf("Only %d of %s in stock, and %d already in your cart.", p.GetStock(), p.GetName(), inCart)
+			msg = errors.Errorf("Only %d of %s in stock, and %d already in your cart.", stock, p.GetName(), inCart)
 		}
 		fe.renderHTTPError(log, r, w, msg, http.StatusUnprocessableEntity)
 		return
@@ -380,7 +385,16 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 	)
 	prices := make([]*pb.Money, len(lines))
 	priceErrs := make([]error, len(lines))
-	wg.Add(2)
+	var stock liveStock
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		products := make([]*pb.Product, len(lines))
+		for i, l := range lines {
+			products[i] = l.Item
+		}
+		stock = fe.overlayStock(r.Context(), log, products...)
+	}()
 	go func() {
 		defer wg.Done()
 		var err error
@@ -411,6 +425,9 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		Item     *pb.Product
 		Quantity int32
 		Price    *pb.Money
+		Left     int32 // free stock of the product (live when inventory-service answers)
+		Short    bool  // the line holds more than is left: checkout would refuse it
+		Low      bool  // 1..lowStockLimit left, the line still fits
 	}
 	items := make([]cartItemView, len(lines))
 	totalPrice := &pb.Money{CurrencyCode: currentCurrency(r)}
@@ -420,7 +437,9 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 			return
 		}
 		multPrice := money.MultiplySlow(prices[i], uint32(l.Quantity)) // #nosec G115 -- quantity is a non-negative proto int32
-		items[i] = cartItemView{Item: l.Item, Quantity: l.Quantity, Price: multPrice}
+		left := stock.of(l.Item)
+		items[i] = cartItemView{Item: l.Item, Quantity: l.Quantity, Price: multPrice, Left: left,
+			Short: l.Quantity > left, Low: l.Quantity <= left && left <= lowStockLimit}
 		totalPrice = money.Must(money.Sum(totalPrice, multPrice))
 	}
 	totalPrice = money.Must(money.Sum(totalPrice, shippingCost))
@@ -438,6 +457,7 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		"total_cost":       totalPrice,
 		"items":            items,
 		"expiration_years": []int{year, year + 1, year + 2, year + 3, year + 4},
+		"idempotency_key":  newIdempotencyKey(),
 		"countries":        checkoutCountries,
 		"us_country":       usCountry,
 	})); err != nil {
@@ -472,6 +492,12 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 		state = ""
 	}
 
+	idemKey := strings.TrimSpace(r.FormValue("idempotency_key"))
+	if !validIdempotencyKey(idemKey) {
+		fe.renderHTTPError(log, r, w, errors.New("The checkout form is out of date. Please open your cart again and place the order from there."), http.StatusUnprocessableEntity)
+		return
+	}
+
 	payload := validator.PlaceOrderPayload{
 		Email:         email,
 		StreetAddress: streetAddress,
@@ -500,9 +526,10 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 				CreditCardExpirationYear:  int32(payload.CcYear),  // #nosec G115 -- parsed with ParseInt bitSize 32, fits in int32
 				CreditCardCvv:             int32(payload.CcCVV),   // #nosec G115 -- parsed with ParseInt bitSize 32, fits in int32
 			},
-			UserId:       cartKey(r),
-			AccountId:    accountID(r),
-			UserCurrency: currentCurrency(r),
+			UserId:         cartKey(r),
+			AccountId:      accountID(r),
+			IdempotencyKey: idemKey,
+			UserCurrency:   currentCurrency(r),
 			Address: &pb.Address{
 				StreetAddress: payload.StreetAddress,
 				City:          payload.City,

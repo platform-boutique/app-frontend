@@ -21,7 +21,9 @@ import (
 // mapped here, so a visitor sees a fitting status and a readable sentence, never a
 // stack trace or a backend error text (those go to the server log only):
 //
-//	InvalidArgument, FailedPrecondition -> 422, the backend's message (it is meant for people)
+//	InvalidArgument, FailedPrecondition -> 422, the backend's message (it is meant for people);
+//	                                       "out of stock: ..." from checkout gets a link back to the cart
+//	Aborted                             -> 409, "your order is being processed" (the same order is already in flight)
 //	NotFound                            -> 404
 //	Unavailable, DeadlineExceeded       -> 503
 //	anything else                       -> 500, generic text
@@ -39,6 +41,14 @@ const (
 	msgBadRequest    = "That request could not be understood."
 	msgForbidden     = "That request was refused."
 	msgUnprocessable = "We could not process that request. Please check your input and try again."
+
+	titleOrderInProgress = "Your order is being processed"
+	msgOrderInProgress   = "Your order is being processed, please do not place it again. Check Orders in a minute to see whether it went through."
+	msgOrderInProgressNo = "Your order is being processed, please do not place it again. Give it a minute before you look again."
+
+	// prefixes of the FailedPrecondition messages of checkout that send the visitor back to the cart
+	outOfStockPrefix  = "out of stock:"
+	attemptFailedText = "this attempt failed"
 )
 
 // rpcWrapper is the "rpc error: code = X desc = " prefix a status error gets when it is printed.
@@ -93,7 +103,18 @@ func classifyError(err error, code int) errorPage {
 	if errors.As(err, &gs) {
 		st := gs.GRPCStatus()
 		switch st.Code() {
-		case codes.InvalidArgument, codes.FailedPrecondition:
+		case codes.Aborted:
+			msg := msgOrderInProgressNo
+			if ordersEnabled {
+				msg = msgOrderInProgress
+			}
+			return errorPage{http.StatusConflict, titleOrderInProgress, msg}
+		case codes.FailedPrecondition:
+			if strings.HasPrefix(st.Message(), outOfStockPrefix) {
+				return errorPage{http.StatusUnprocessableEntity, "Some items are out of stock", readableMessage(st.Message())}
+			}
+			return errorPage{http.StatusUnprocessableEntity, titleFor(http.StatusUnprocessableEntity), readableMessage(st.Message())}
+		case codes.InvalidArgument:
 			return errorPage{http.StatusUnprocessableEntity, titleFor(http.StatusUnprocessableEntity), readableMessage(st.Message())}
 		case codes.NotFound:
 			return errorPage{http.StatusNotFound, titleFor(http.StatusNotFound), msgNotFound}
@@ -148,6 +169,7 @@ func (fe *frontendServer) renderHTTPError(log logrus.FieldLogger, r *http.Reques
 		"status_code": page.Code,
 		"status":      http.StatusText(page.Code),
 		"categories":  fe.navCategories(r.Context()),
+		"cart_link":   cartLinkFor(page),
 	}
 	name := "error"
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
@@ -162,6 +184,16 @@ func (fe *frontendServer) renderHTTPError(log logrus.FieldLogger, r *http.Reques
 	if templateErr := getTemplates().ExecuteTemplate(w, name, injectCommonTemplateData(r, data)); templateErr != nil {
 		log.Println(templateErr)
 	}
+}
+
+// cartLinkFor tells whether the error page offers "Back to your cart": the order was refused
+// because of the stock (or the checkout attempt is spent), the cart is where to fix it.
+func cartLinkFor(p errorPage) bool {
+	if p.Code != http.StatusUnprocessableEntity {
+		return false
+	}
+	m := strings.ToLower(p.Message)
+	return strings.HasPrefix(m, outOfStockPrefix) || strings.HasPrefix(m, attemptFailedText)
 }
 
 // navCache keeps the department list for the header navigation of pages that do
