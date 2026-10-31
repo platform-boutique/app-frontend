@@ -233,6 +233,7 @@ message PlaceOrderRequest {
   Address address = 3;
   string email = 5;
   CreditCardInfo credit_card = 6;
+  string account_id = 7; // optional: the signed-in user; checkout stores it as the order's user_id (user_id above stays the cart key)
 }
 
 message PlaceOrderResponse {

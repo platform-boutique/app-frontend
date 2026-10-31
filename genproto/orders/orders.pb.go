@@ -658,6 +658,102 @@ func (x *ListOrdersRequest) GetPlacedOnly() bool {
 	return false
 }
 
+type ClaimOrdersRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SessionId     string                 `protobuf:"bytes,1,opt,name=session_id,json=sessionId,proto3" json:"session_id,omitempty"` // 1-128 characters
+	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`          // 1-128 characters
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClaimOrdersRequest) Reset() {
+	*x = ClaimOrdersRequest{}
+	mi := &file_orders_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClaimOrdersRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClaimOrdersRequest) ProtoMessage() {}
+
+func (x *ClaimOrdersRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_orders_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClaimOrdersRequest.ProtoReflect.Descriptor instead.
+func (*ClaimOrdersRequest) Descriptor() ([]byte, []int) {
+	return file_orders_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ClaimOrdersRequest) GetSessionId() string {
+	if x != nil {
+		return x.SessionId
+	}
+	return ""
+}
+
+func (x *ClaimOrdersRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type ClaimOrdersResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Claimed       int32                  `protobuf:"varint,1,opt,name=claimed,proto3" json:"claimed,omitempty"` // orders changed by THIS call
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClaimOrdersResponse) Reset() {
+	*x = ClaimOrdersResponse{}
+	mi := &file_orders_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClaimOrdersResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClaimOrdersResponse) ProtoMessage() {}
+
+func (x *ClaimOrdersResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_orders_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClaimOrdersResponse.ProtoReflect.Descriptor instead.
+func (*ClaimOrdersResponse) Descriptor() ([]byte, []int) {
+	return file_orders_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *ClaimOrdersResponse) GetClaimed() int32 {
+	if x != nil {
+		return x.Claimed
+	}
+	return 0
+}
+
 type ListOrdersResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Orders        []*Order               `protobuf:"bytes,1,rep,name=orders,proto3" json:"orders,omitempty"`
@@ -668,7 +764,7 @@ type ListOrdersResponse struct {
 
 func (x *ListOrdersResponse) Reset() {
 	*x = ListOrdersResponse{}
-	mi := &file_orders_proto_msgTypes[8]
+	mi := &file_orders_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -680,7 +776,7 @@ func (x *ListOrdersResponse) String() string {
 func (*ListOrdersResponse) ProtoMessage() {}
 
 func (x *ListOrdersResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_orders_proto_msgTypes[8]
+	mi := &file_orders_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -693,7 +789,7 @@ func (x *ListOrdersResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOrdersResponse.ProtoReflect.Descriptor instead.
 func (*ListOrdersResponse) Descriptor() ([]byte, []int) {
-	return file_orders_proto_rawDescGZIP(), []int{8}
+	return file_orders_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListOrdersResponse) GetOrders() []*Order {
@@ -744,7 +840,7 @@ type Order struct {
 
 func (x *Order) Reset() {
 	*x = Order{}
-	mi := &file_orders_proto_msgTypes[9]
+	mi := &file_orders_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -756,7 +852,7 @@ func (x *Order) String() string {
 func (*Order) ProtoMessage() {}
 
 func (x *Order) ProtoReflect() protoreflect.Message {
-	mi := &file_orders_proto_msgTypes[9]
+	mi := &file_orders_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,7 +865,7 @@ func (x *Order) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Order.ProtoReflect.Descriptor instead.
 func (*Order) Descriptor() ([]byte, []int) {
-	return file_orders_proto_rawDescGZIP(), []int{9}
+	return file_orders_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *Order) GetOrderId() string {
@@ -957,7 +1053,13 @@ const file_orders_proto_rawDesc = "" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
 	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\x12\x1f\n" +
 	"\vplaced_only\x18\x05 \x01(\bR\n" +
-	"placedOnly\"]\n" +
+	"placedOnly\"L\n" +
+	"\x12ClaimOrdersRequest\x12\x1d\n" +
+	"\n" +
+	"session_id\x18\x01 \x01(\tR\tsessionId\x12\x17\n" +
+	"\auser_id\x18\x02 \x01(\tR\x06userId\"/\n" +
+	"\x13ClaimOrdersResponse\x12\x18\n" +
+	"\aclaimed\x18\x01 \x01(\x05R\aclaimed\"]\n" +
 	"\x12ListOrdersResponse\x121\n" +
 	"\x06orders\x18\x01 \x03(\v2\x19.hipstershop.orders.OrderR\x06orders\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x05R\x05total\"\xcd\a\n" +
@@ -992,14 +1094,15 @@ const file_orders_proto_rawDesc = "" +
 	"\x17ORDER_STATUS_PROCESSING\x10\x03\x12\x18\n" +
 	"\x14ORDER_STATUS_SHIPPED\x10\x04\x12\x1a\n" +
 	"\x16ORDER_STATUS_DELIVERED\x10\x05\x12\x17\n" +
-	"\x13ORDER_STATUS_FAILED\x10\x062\xab\x03\n" +
+	"\x13ORDER_STATUS_FAILED\x10\x062\x8b\x04\n" +
 	"\fOrderService\x12P\n" +
 	"\vCreateOrder\x12&.hipstershop.orders.CreateOrderRequest\x1a\x19.hipstershop.orders.Order\x12R\n" +
 	"\fConfirmOrder\x12'.hipstershop.orders.ConfirmOrderRequest\x1a\x19.hipstershop.orders.Order\x12L\n" +
 	"\tFailOrder\x12$.hipstershop.orders.FailOrderRequest\x1a\x19.hipstershop.orders.Order\x12J\n" +
 	"\bGetOrder\x12#.hipstershop.orders.GetOrderRequest\x1a\x19.hipstershop.orders.Order\x12[\n" +
 	"\n" +
-	"ListOrders\x12%.hipstershop.orders.ListOrdersRequest\x1a&.hipstershop.orders.ListOrdersResponseB!Z\x1ffrontend/genproto/orders;ordersb\x06proto3"
+	"ListOrders\x12%.hipstershop.orders.ListOrdersRequest\x1a&.hipstershop.orders.ListOrdersResponse\x12^\n" +
+	"\vClaimOrders\x12&.hipstershop.orders.ClaimOrdersRequest\x1a'.hipstershop.orders.ClaimOrdersResponseB!Z\x1ffrontend/genproto/orders;ordersb\x06proto3"
 
 var (
 	file_orders_proto_rawDescOnce sync.Once
@@ -1014,7 +1117,7 @@ func file_orders_proto_rawDescGZIP() []byte {
 }
 
 var file_orders_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_orders_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_orders_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_orders_proto_goTypes = []any{
 	(OrderStatus)(0),              // 0: hipstershop.orders.OrderStatus
 	(*Money)(nil),                 // 1: hipstershop.orders.Money
@@ -1025,9 +1128,11 @@ var file_orders_proto_goTypes = []any{
 	(*FailOrderRequest)(nil),      // 6: hipstershop.orders.FailOrderRequest
 	(*GetOrderRequest)(nil),       // 7: hipstershop.orders.GetOrderRequest
 	(*ListOrdersRequest)(nil),     // 8: hipstershop.orders.ListOrdersRequest
-	(*ListOrdersResponse)(nil),    // 9: hipstershop.orders.ListOrdersResponse
-	(*Order)(nil),                 // 10: hipstershop.orders.Order
-	(*timestamppb.Timestamp)(nil), // 11: google.protobuf.Timestamp
+	(*ClaimOrdersRequest)(nil),    // 9: hipstershop.orders.ClaimOrdersRequest
+	(*ClaimOrdersResponse)(nil),   // 10: hipstershop.orders.ClaimOrdersResponse
+	(*ListOrdersResponse)(nil),    // 11: hipstershop.orders.ListOrdersResponse
+	(*Order)(nil),                 // 12: hipstershop.orders.Order
+	(*timestamppb.Timestamp)(nil), // 13: google.protobuf.Timestamp
 }
 var file_orders_proto_depIdxs = []int32{
 	1,  // 0: hipstershop.orders.OrderItem.unit_price:type_name -> hipstershop.orders.Money
@@ -1035,31 +1140,33 @@ var file_orders_proto_depIdxs = []int32{
 	3,  // 2: hipstershop.orders.CreateOrderRequest.items:type_name -> hipstershop.orders.OrderItem
 	1,  // 3: hipstershop.orders.CreateOrderRequest.shipping_cost:type_name -> hipstershop.orders.Money
 	1,  // 4: hipstershop.orders.CreateOrderRequest.total:type_name -> hipstershop.orders.Money
-	10, // 5: hipstershop.orders.ListOrdersResponse.orders:type_name -> hipstershop.orders.Order
+	12, // 5: hipstershop.orders.ListOrdersResponse.orders:type_name -> hipstershop.orders.Order
 	2,  // 6: hipstershop.orders.Order.shipping_address:type_name -> hipstershop.orders.Address
 	3,  // 7: hipstershop.orders.Order.items:type_name -> hipstershop.orders.OrderItem
 	1,  // 8: hipstershop.orders.Order.shipping_cost:type_name -> hipstershop.orders.Money
 	1,  // 9: hipstershop.orders.Order.total:type_name -> hipstershop.orders.Money
 	0,  // 10: hipstershop.orders.Order.status:type_name -> hipstershop.orders.OrderStatus
-	11, // 11: hipstershop.orders.Order.created_at:type_name -> google.protobuf.Timestamp
-	11, // 12: hipstershop.orders.Order.placed_at:type_name -> google.protobuf.Timestamp
-	11, // 13: hipstershop.orders.Order.processing_at:type_name -> google.protobuf.Timestamp
-	11, // 14: hipstershop.orders.Order.shipped_at:type_name -> google.protobuf.Timestamp
-	11, // 15: hipstershop.orders.Order.delivered_at:type_name -> google.protobuf.Timestamp
-	11, // 16: hipstershop.orders.Order.failed_at:type_name -> google.protobuf.Timestamp
-	11, // 17: hipstershop.orders.Order.evaluated_at:type_name -> google.protobuf.Timestamp
+	13, // 11: hipstershop.orders.Order.created_at:type_name -> google.protobuf.Timestamp
+	13, // 12: hipstershop.orders.Order.placed_at:type_name -> google.protobuf.Timestamp
+	13, // 13: hipstershop.orders.Order.processing_at:type_name -> google.protobuf.Timestamp
+	13, // 14: hipstershop.orders.Order.shipped_at:type_name -> google.protobuf.Timestamp
+	13, // 15: hipstershop.orders.Order.delivered_at:type_name -> google.protobuf.Timestamp
+	13, // 16: hipstershop.orders.Order.failed_at:type_name -> google.protobuf.Timestamp
+	13, // 17: hipstershop.orders.Order.evaluated_at:type_name -> google.protobuf.Timestamp
 	4,  // 18: hipstershop.orders.OrderService.CreateOrder:input_type -> hipstershop.orders.CreateOrderRequest
 	5,  // 19: hipstershop.orders.OrderService.ConfirmOrder:input_type -> hipstershop.orders.ConfirmOrderRequest
 	6,  // 20: hipstershop.orders.OrderService.FailOrder:input_type -> hipstershop.orders.FailOrderRequest
 	7,  // 21: hipstershop.orders.OrderService.GetOrder:input_type -> hipstershop.orders.GetOrderRequest
 	8,  // 22: hipstershop.orders.OrderService.ListOrders:input_type -> hipstershop.orders.ListOrdersRequest
-	10, // 23: hipstershop.orders.OrderService.CreateOrder:output_type -> hipstershop.orders.Order
-	10, // 24: hipstershop.orders.OrderService.ConfirmOrder:output_type -> hipstershop.orders.Order
-	10, // 25: hipstershop.orders.OrderService.FailOrder:output_type -> hipstershop.orders.Order
-	10, // 26: hipstershop.orders.OrderService.GetOrder:output_type -> hipstershop.orders.Order
-	9,  // 27: hipstershop.orders.OrderService.ListOrders:output_type -> hipstershop.orders.ListOrdersResponse
-	23, // [23:28] is the sub-list for method output_type
-	18, // [18:23] is the sub-list for method input_type
+	9,  // 23: hipstershop.orders.OrderService.ClaimOrders:input_type -> hipstershop.orders.ClaimOrdersRequest
+	12, // 24: hipstershop.orders.OrderService.CreateOrder:output_type -> hipstershop.orders.Order
+	12, // 25: hipstershop.orders.OrderService.ConfirmOrder:output_type -> hipstershop.orders.Order
+	12, // 26: hipstershop.orders.OrderService.FailOrder:output_type -> hipstershop.orders.Order
+	12, // 27: hipstershop.orders.OrderService.GetOrder:output_type -> hipstershop.orders.Order
+	11, // 28: hipstershop.orders.OrderService.ListOrders:output_type -> hipstershop.orders.ListOrdersResponse
+	10, // 29: hipstershop.orders.OrderService.ClaimOrders:output_type -> hipstershop.orders.ClaimOrdersResponse
+	24, // [24:30] is the sub-list for method output_type
+	18, // [18:24] is the sub-list for method input_type
 	18, // [18:18] is the sub-list for extension type_name
 	18, // [18:18] is the sub-list for extension extendee
 	0,  // [0:18] is the sub-list for field type_name
@@ -1076,7 +1183,7 @@ func file_orders_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_orders_proto_rawDesc), len(file_orders_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

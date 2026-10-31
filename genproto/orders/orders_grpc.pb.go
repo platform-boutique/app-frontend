@@ -30,6 +30,7 @@ const (
 	OrderService_FailOrder_FullMethodName    = "/hipstershop.orders.OrderService/FailOrder"
 	OrderService_GetOrder_FullMethodName     = "/hipstershop.orders.OrderService/GetOrder"
 	OrderService_ListOrders_FullMethodName   = "/hipstershop.orders.OrderService/ListOrders"
+	OrderService_ClaimOrders_FullMethodName  = "/hipstershop.orders.OrderService/ClaimOrders"
 )
 
 // OrderServiceClient is the client API for OrderService service.
@@ -57,6 +58,11 @@ type OrderServiceClient interface {
 	GetOrder(ctx context.Context, in *GetOrderRequest, opts ...grpc.CallOption) (*Order, error)
 	// ListOrders returns one page of the orders of ONE session or ONE user, newest first.
 	ListOrders(ctx context.Context, in *ListOrdersRequest, opts ...grpc.CallOption) (*ListOrdersResponse, error)
+	// ClaimOrders gives the orders of an anonymous session to a user: every order with this
+	// session_id whose user_id is EMPTY gets user_id set. Orders that already belong to a user
+	// are never touched (so a second user on the same browser cannot take them). Idempotent:
+	// repeating returns claimed = 0. INVALID_ARGUMENT when session_id or user_id is empty.
+	ClaimOrders(ctx context.Context, in *ClaimOrdersRequest, opts ...grpc.CallOption) (*ClaimOrdersResponse, error)
 }
 
 type orderServiceClient struct {
@@ -117,6 +123,16 @@ func (c *orderServiceClient) ListOrders(ctx context.Context, in *ListOrdersReque
 	return out, nil
 }
 
+func (c *orderServiceClient) ClaimOrders(ctx context.Context, in *ClaimOrdersRequest, opts ...grpc.CallOption) (*ClaimOrdersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClaimOrdersResponse)
+	err := c.cc.Invoke(ctx, OrderService_ClaimOrders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // OrderServiceServer is the server API for OrderService service.
 // All implementations must embed UnimplementedOrderServiceServer
 // for forward compatibility.
@@ -142,6 +158,11 @@ type OrderServiceServer interface {
 	GetOrder(context.Context, *GetOrderRequest) (*Order, error)
 	// ListOrders returns one page of the orders of ONE session or ONE user, newest first.
 	ListOrders(context.Context, *ListOrdersRequest) (*ListOrdersResponse, error)
+	// ClaimOrders gives the orders of an anonymous session to a user: every order with this
+	// session_id whose user_id is EMPTY gets user_id set. Orders that already belong to a user
+	// are never touched (so a second user on the same browser cannot take them). Idempotent:
+	// repeating returns claimed = 0. INVALID_ARGUMENT when session_id or user_id is empty.
+	ClaimOrders(context.Context, *ClaimOrdersRequest) (*ClaimOrdersResponse, error)
 	mustEmbedUnimplementedOrderServiceServer()
 }
 
@@ -166,6 +187,9 @@ func (UnimplementedOrderServiceServer) GetOrder(context.Context, *GetOrderReques
 }
 func (UnimplementedOrderServiceServer) ListOrders(context.Context, *ListOrdersRequest) (*ListOrdersResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOrders not implemented")
+}
+func (UnimplementedOrderServiceServer) ClaimOrders(context.Context, *ClaimOrdersRequest) (*ClaimOrdersResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ClaimOrders not implemented")
 }
 func (UnimplementedOrderServiceServer) mustEmbedUnimplementedOrderServiceServer() {}
 func (UnimplementedOrderServiceServer) testEmbeddedByValue()                      {}
@@ -278,6 +302,24 @@ func _OrderService_ListOrders_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _OrderService_ClaimOrders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClaimOrdersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OrderServiceServer).ClaimOrders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OrderService_ClaimOrders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OrderServiceServer).ClaimOrders(ctx, req.(*ClaimOrdersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // OrderService_ServiceDesc is the grpc.ServiceDesc for OrderService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -304,6 +346,10 @@ var OrderService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListOrders",
 			Handler:    _OrderService_ListOrders_Handler,
+		},
+		{
+			MethodName: "ClaimOrders",
+			Handler:    _OrderService_ClaimOrders_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

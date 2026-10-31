@@ -32,6 +32,11 @@ service OrderService {
   rpc GetOrder(GetOrderRequest) returns (Order);
   // ListOrders returns one page of the orders of ONE session or ONE user, newest first.
   rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  // ClaimOrders gives the orders of an anonymous session to a user: every order with this
+  // session_id whose user_id is EMPTY gets user_id set. Orders that already belong to a user
+  // are never touched (so a second user on the same browser cannot take them). Idempotent:
+  // repeating returns claimed = 0. INVALID_ARGUMENT when session_id or user_id is empty.
+  rpc ClaimOrders(ClaimOrdersRequest) returns (ClaimOrdersResponse);
 }
 
 enum OrderStatus {
@@ -109,6 +114,14 @@ message ListOrdersRequest {
   // When true only orders that were confirmed (PLACED and later) are returned,
   // i.e. no PENDING and no FAILED ones. This is what an order-history page wants.
   bool placed_only = 5;
+}
+
+message ClaimOrdersRequest {
+  string session_id = 1;  // 1-128 characters
+  string user_id = 2;     // 1-128 characters
+}
+message ClaimOrdersResponse {
+  int32 claimed = 1;      // orders changed by THIS call
 }
 
 message ListOrdersResponse {
