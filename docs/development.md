@@ -25,6 +25,7 @@ docker run --rm -p 8080:8080 -p 9464:9464 \
   frontend
 
 go test ./...
+python3 tools/check-contrast.py      # WCAG contrast of the colour tokens, both themes; exits 1 on a failure
 
 curl -s localhost:8080/_healthz            # ok
 curl -s localhost:9464/metrics | grep http_requests_total
@@ -54,7 +55,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── icons.html       # inline SVG brand mark and icons (no image files)
 │   └── catalog.html     # department nav and tiles, search/sort toolbar, results fragment, pagination, product card
 ├── static/
-│   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css
+│   ├── styles/          # styles.css (design tokens "Evergreen & Oat", light/dark, layout, components), cart.css, order.css
 │   ├── favicon.svg
 │   └── img/products/    # product photos
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
