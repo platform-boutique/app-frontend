@@ -226,6 +226,7 @@ type trackView struct {
 	PollURL     string
 	PollEvery   string // "15s"
 	PollSeconds int
+	EmailURL    string // "View confirmation email", empty when there is no mail (or no mailbox)
 }
 
 // stage names in order; the status of the order says how many of them are reached
@@ -481,29 +482,14 @@ func (fe *frontendServer) orderTrackingHandler(w http.ResponseWriter, r *http.Re
 	if fe.identityUnavailable(log, r, w) {
 		return
 	}
-	// the guard is the signed-in user, or the session of an anonymous visitor
-	req := &pbo.GetOrderRequest{OrderId: id}
-	owns := func(o *pbo.Order) bool { return o.GetSessionId() == req.SessionId }
-	if u := userOf(r); u != nil {
-		req.UserId = u.ID
-		owns = func(o *pbo.Order) bool { return o.GetUserId() == req.UserId }
-	} else if req.SessionId = sessionID(r); req.SessionId == "" {
-		fe.renderHTTPError(log, r, w, errors.New("no session"), http.StatusNotFound)
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), orderReadTimeout)
-	defer cancel()
-	o, err := fe.orders.GetOrder(ctx, req)
-	if err != nil {
-		fe.failOrders(log, r, w, err, "could not get order")
-		return
-	}
-	if !owns(o) {
-		// the service guards this already; a second look costs nothing and keeps a wrong order off the page
-		fe.renderHTTPError(log, r, w, errors.New("order belongs to somebody else"), http.StatusNotFound)
+	o := fe.ownedOrder(log, w, r, id)
+	if o == nil {
 		return
 	}
 	view := newTrackView(o)
+	if !isFragmentRequest(r) {
+		view.EmailURL = fe.confirmationEmailURL(r.Context(), log, id) // the polls do not ask again
+	}
 	log.WithField("order", id).WithField("status", o.GetStatus().String()).Info("order tracking")
 
 	w.Header().Set("Vary", "HX-Request")
@@ -523,4 +509,33 @@ func (fe *frontendServer) orderTrackingHandler(w http.ResponseWriter, r *http.Re
 	})); err != nil {
 		log.Println(err)
 	}
+}
+
+// ownedOrder fetches order id for the visitor: the guard is the signed-in user, or the session of
+// an anonymous visitor. It answers the 404 / 503 page itself and returns nil when the visitor may not
+// see the order (unknown, somebody else's, no session) or order-service could not answer. The caller has
+// checked fe.orders, the id's shape and the identity already.
+func (fe *frontendServer) ownedOrder(log logrus.FieldLogger, w http.ResponseWriter, r *http.Request, id string) *pbo.Order {
+	req := &pbo.GetOrderRequest{OrderId: id}
+	owns := func(o *pbo.Order) bool { return o.GetSessionId() == req.SessionId }
+	if u := userOf(r); u != nil {
+		req.UserId = u.ID
+		owns = func(o *pbo.Order) bool { return o.GetUserId() == req.UserId }
+	} else if req.SessionId = sessionID(r); req.SessionId == "" {
+		fe.renderHTTPError(log, r, w, errors.New("no session"), http.StatusNotFound)
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), orderReadTimeout)
+	defer cancel()
+	o, err := fe.orders.GetOrder(ctx, req)
+	if err != nil {
+		fe.failOrders(log, r, w, err, "could not get order")
+		return nil
+	}
+	if !owns(o) {
+		// the service guards this already; a second look costs nothing and keeps a wrong order off the page
+		fe.renderHTTPError(log, r, w, errors.New("order belongs to somebody else"), http.StatusNotFound)
+		return nil
+	}
+	return o
 }

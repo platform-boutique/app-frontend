@@ -17,6 +17,7 @@ import (
 
 	pb "frontend/genproto"
 	pbi "frontend/genproto/inventory"
+	pbm "frontend/genproto/mailbox"
 	pbo "frontend/genproto/orders"
 	pbu "frontend/genproto/users"
 )
@@ -88,6 +89,11 @@ type frontendServer struct {
 	inventorySvcAddr string
 	inventorySvcConn *grpc.ClientConn
 	inventory        pbi.InventoryServiceClient
+
+	// optional: nil when EMAIL_SERVICE_ADDR is set to an empty string (the mailbox is off); it also needs the orders
+	emailSvcAddr string
+	emailSvcConn *grpc.ClientConn
+	mailbox      pbm.MailboxServiceClient
 
 	nav navCache
 }
@@ -185,6 +191,18 @@ func main() {
 		log.Info("INVENTORY_SERVICE_ADDR is empty: live stock is off, the catalogue's stock is used")
 	}
 
+	// email-service (the mailbox) is optional as well: lazy connection, only /emails and the links to it depend on it.
+	// Which mails are the visitor's is told by order-service, so the mailbox needs the orders too.
+	if svc.emailSvcAddr = emailAddrFromEnv(); svc.emailSvcAddr == "" {
+		log.Info("EMAIL_SERVICE_ADDR is empty: the mailbox is off")
+	} else if svc.orders == nil {
+		log.Info("ORDER_SERVICE_ADDR is empty: the mailbox is off (it needs the orders to know whose mail is whose)")
+	} else {
+		mustConnGRPC(&svc.emailSvcConn, svc.emailSvcAddr)
+		svc.mailbox = pbm.NewMailboxServiceClient(svc.emailSvcConn)
+		mailboxEnabled = true
+	}
+
 	// --- Router ---
 	r := mux.NewRouter()
 	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
@@ -198,6 +216,8 @@ func main() {
 	svc.accountRoutes(r)
 	r.HandleFunc(baseUrl+"/orders", svc.ordersHistoryHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/orders/{id}", svc.orderTrackingHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/emails", svc.emailsHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/emails/{id}", svc.emailHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/cart/checkout", svc.placeOrderHandler).Methods(http.MethodPost)
 	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", http.FileServer(http.Dir("./static/"))))
 	r.HandleFunc(baseUrl+"/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "User-agent: *\nDisallow: /") })

@@ -1,0 +1,98 @@
+{{/*
+  The mailbox: /emails (list) and /emails/{id}?order={order} (one mail). Styles: static/styles/mailbox.css.
+  No script of its own. The mail's HTML is shown in a sandboxed iframe: `sandbox` with no value (no scripts,
+  no forms, no popups, no same-origin, no top navigation). It goes into `srcdoc` as a plain STRING: html/template
+  treats srcdoc as an HTML-typed attribute and escapes a string there (&, <, >, quotes), the browser decodes it
+  once and reads the mail as the document. Never pass it as template.HTML: that would skip the escaping and let
+  a body containing a quote end the attribute.
+*/}}
+
+{{ define "emails_list" }}
+{{ template "header" . }}
+<main id="main" class="mailbox-page">
+    <div class="container">
+        <div class="section-head mailbox-head">
+            <h1>Your emails</h1>
+            {{ if $.rows }}<p>{{ len $.rows }} email{{ if ne (len $.rows) 1 }}s{{ end }}, newest first</p>{{ end }}
+        </div>
+
+        {{ if $.rows }}
+        <ul class="mail-list">
+            {{ range $.rows }}
+            <li class="mail-card">
+                <div class="mail-card-main">
+                    <h2 class="mail-card-subject"><a href="{{ .URL }}">{{ .Subject }}</a></h2>
+                    <p class="mail-card-meta muted">
+                        To <span class="mail-to">{{ .To }}</span>{{ if .When }} &middot; <time datetime="{{ .ISO }}">{{ .When }}</time>{{ end }}
+                    </p>
+                    <p class="mail-card-order muted">About order <a href="{{ .OrderURL }}" class="mono">#{{ .OrderID }}</a></p>
+                </div>
+                <a class="btn btn-secondary btn-sm mail-card-link" href="{{ .URL }}">Read<span class="visually-hidden"> email: {{ .Subject }}</span></a>
+            </li>
+            {{ end }}
+        </ul>
+        {{ else }}
+        <section class="mailbox-empty" aria-labelledby="mailbox-empty-title">
+            <div class="notice">
+                <div class="notice-icon is-neutral">{{ template "icon_orders" . }}</div>
+                <h2 id="mailbox-empty-title">No emails yet</h2>
+                <p class="muted">The confirmation emails of the orders you place show up here. In this demo store nothing is really sent: this is the mailbox.</p>
+                <div class="notice-actions">
+                    <a class="btn btn-primary" href="{{ $.baseUrl }}/">Start shopping</a>
+                </div>
+            </div>
+        </section>
+        {{ end }}
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}
+
+{{ define "email_detail" }}
+{{ template "header" . }}
+<main id="main" class="mailbox-page">
+    <div class="container">
+        {{ with $.m }}
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+            <a href="{{ .ListURL }}">&larr; All emails</a>
+        </nav>
+
+        <div class="section-head mailbox-head">
+            <h1 class="mail-subject">{{ .Subject }}</h1>
+        </div>
+
+        <section class="track-card mail-card-headers" aria-label="Email details">
+            <dl class="order-summary mail-headers">
+                <div class="order-row">
+                    <dt>To</dt>
+                    <dd class="mail-to">{{ .To }}</dd>
+                </div>
+                {{ if .When }}
+                <div class="order-row">
+                    <dt>Sent</dt>
+                    <dd><time datetime="{{ .ISO }}">{{ .When }}</time></dd>
+                </div>
+                {{ end }}
+                <div class="order-row">
+                    <dt>Order</dt>
+                    <dd><a href="{{ .OrderURL }}" class="mono">#{{ .OrderID }}</a></dd>
+                </div>
+            </dl>
+        </section>
+
+        {{ if .HTMLBody }}
+        <section class="mail-frame-wrap" aria-label="Email">
+            <iframe class="mail-frame" sandbox srcdoc="{{ .HTMLBody }}" title="Email: {{ .Subject }}" referrerpolicy="no-referrer" loading="lazy"></iframe>
+        </section>
+        {{ end }}
+
+        <details class="track-card mail-text"{{ if not .HTMLBody }} open{{ end }}>
+            <summary>Plain text version</summary>
+            {{ if .TextBody }}<pre class="mail-text-body">{{ .TextBody }}</pre>
+            {{ else }}<p class="muted">This email has no plain text version.</p>{{ end }}
+        </details>
+        {{ end }}
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}

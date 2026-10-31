@@ -9,6 +9,7 @@
         <div class="section-head orders-head">
             <h1>Your orders</h1>
             {{ if $.rows }}<p>{{ $.total }} order{{ if ne $.total 1 }}s{{ end }}, newest first</p>{{ end }}
+            {{ if $.mailbox_enabled }}<p class="orders-mail-link"><a href="{{ $.baseUrl }}/emails">Your emails</a>: the confirmation emails of your orders</p>{{ end }}
         </div>
 
         {{ if $.rows }}
@@ -178,6 +179,13 @@
                         </div>
                     </dl>
                 </section>
+
+                {{ if .EmailURL }}
+                <section class="track-card track-email" aria-labelledby="email-title">
+                    <h2 id="email-title" class="track-card-title">Confirmation email</h2>
+                    <p><a class="btn btn-secondary" href="{{ .EmailURL }}">View confirmation email</a></p>
+                </section>
+                {{ end }}
 
                 <section class="track-card">
                     <h2 class="track-card-title">Shipping to</h2>

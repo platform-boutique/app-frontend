@@ -674,6 +674,7 @@ func injectCommonTemplateData(r *http.Request, payload map[string]interface{}) m
 		"currentYear":      time.Now().Year(),
 		"baseUrl":          baseUrl,
 		"orders_enabled":   ordersEnabled,
+		"mailbox_enabled":  mailboxEnabled,
 		"accounts_enabled": accountsEnabled,
 	}
 	if u := userOf(r); u != nil {

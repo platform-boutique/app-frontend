@@ -95,6 +95,10 @@ func classifyError(err error, code int) errorPage {
 	if errors.As(err, &ou) {
 		return errorPage{http.StatusServiceUnavailable, "Orders are not available", msgOrdersUnavailable}
 	}
+	var mu *mailboxUnavailableError
+	if errors.As(err, &mu) {
+		return errorPage{http.StatusServiceUnavailable, "Your emails are not available", msgMailboxUnavailable}
+	}
 	var uu *usersUnavailableError
 	if errors.As(err, &uu) {
 		return errorPage{http.StatusServiceUnavailable, "Accounts are not available", msgAccountsUnavailable}

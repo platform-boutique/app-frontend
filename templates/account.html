@@ -127,6 +127,7 @@
                 <h2 id="account-actions-title" class="track-card-title">What would you like to do?</h2>
                 <div class="account-actions">
                     {{ if $.orders_enabled }}<a class="btn btn-primary" href="{{ $.baseUrl }}/orders">Your orders</a>{{ end }}
+                    {{ if $.mailbox_enabled }}<a class="btn btn-secondary" href="{{ $.baseUrl }}/emails">Your emails</a>{{ end }}
                     <a class="btn btn-secondary" href="{{ $.baseUrl }}/cart">Your cart</a>
                     <form method="POST" action="{{ $.baseUrl }}/logout" class="account-signout">
                         <button type="submit" class="btn btn-secondary">Sign out</button>
