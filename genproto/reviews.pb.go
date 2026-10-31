@@ -339,10 +339,13 @@ func (x *GetRatingSummaryRequest) GetProductIds() []string {
 }
 
 type RatingSummary struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
-	Average       float64                `protobuf:"fixed64,2,opt,name=average,proto3" json:"average,omitempty"` // 1 decimal; 0 when count is 0
-	Count         int32                  `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	ProductId string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
+	Average   float64                `protobuf:"fixed64,2,opt,name=average,proto3" json:"average,omitempty"` // 1 decimal; 0 when count is 0
+	Count     int32                  `protobuf:"varint,3,opt,name=count,proto3" json:"count,omitempty"`
+	// exactly 5 entries, index 0 = number of 1-star reviews ... index 4 = 5-star; always present,
+	// sum == count. Older review-services do not send it.
+	StarCounts    []int32 `protobuf:"varint,4,rep,packed,name=star_counts,json=starCounts,proto3" json:"star_counts,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -396,6 +399,13 @@ func (x *RatingSummary) GetCount() int32 {
 		return x.Count
 	}
 	return 0
+}
+
+func (x *RatingSummary) GetStarCounts() []int32 {
+	if x != nil {
+		return x.StarCounts
+	}
+	return nil
 }
 
 type GetRatingSummaryResponse struct {
@@ -475,12 +485,14 @@ const file_reviews_proto_rawDesc = "" +
 	"\acomment\x18\x04 \x01(\tR\acomment\":\n" +
 	"\x17GetRatingSummaryRequest\x12\x1f\n" +
 	"\vproduct_ids\x18\x01 \x03(\tR\n" +
-	"productIds\"^\n" +
+	"productIds\"\x7f\n" +
 	"\rRatingSummary\x12\x1d\n" +
 	"\n" +
 	"product_id\x18\x01 \x01(\tR\tproductId\x12\x18\n" +
 	"\aaverage\x18\x02 \x01(\x01R\aaverage\x12\x14\n" +
-	"\x05count\x18\x03 \x01(\x05R\x05count\"T\n" +
+	"\x05count\x18\x03 \x01(\x05R\x05count\x12\x1f\n" +
+	"\vstar_counts\x18\x04 \x03(\x05R\n" +
+	"starCounts\"T\n" +
 	"\x18GetRatingSummaryResponse\x128\n" +
 	"\tsummaries\x18\x01 \x03(\v2\x1a.hipstershop.RatingSummaryR\tsummaries2\x83\x02\n" +
 	"\rReviewService\x12P\n" +

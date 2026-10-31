@@ -60,6 +60,8 @@ service CheckoutService {
 
 service AdService {
   rpc GetAds(AdRequest) returns (AdResponse) {}
+  rpc RecordClick(RecordClickRequest) returns (RecordClickResponse);
+  rpc GetAdStats(GetAdStatsRequest) returns (GetAdStatsResponse);
 }
 
 message CartItem {
@@ -256,7 +258,16 @@ message Ad {
 
   // short advertisement text to display.
   string text = 2;
+
+  // stable id of the ad (slice 7), used for click tracking.
+  string id = 3;
 }
+
+message RecordClickRequest { string ad_id = 1; }
+message RecordClickResponse {}
+message GetAdStatsRequest {}
+message AdStat { string ad_id = 1; int64 impressions = 2; int64 clicks = 3; }
+message GetAdStatsResponse { repeated AdStat stats = 1; }
 
 // ----- product catalog: browse (added for the general store, copied from product-catalog-service) -----
 

@@ -52,6 +52,9 @@ message RatingSummary {
   string product_id = 1;
   double average = 2; // 1 decimal; 0 when count is 0
   int32 count = 3;
+  // exactly 5 entries, index 0 = number of 1-star reviews ... index 4 = 5-star; always present,
+  // sum == count. Older review-services do not send it.
+  repeated int32 star_counts = 4;
 }
 
 message GetRatingSummaryResponse {

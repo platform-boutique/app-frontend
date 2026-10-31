@@ -1153,7 +1153,9 @@ var CheckoutService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AdService_GetAds_FullMethodName = "/hipstershop.AdService/GetAds"
+	AdService_GetAds_FullMethodName      = "/hipstershop.AdService/GetAds"
+	AdService_RecordClick_FullMethodName = "/hipstershop.AdService/RecordClick"
+	AdService_GetAdStats_FullMethodName  = "/hipstershop.AdService/GetAdStats"
 )
 
 // AdServiceClient is the client API for AdService service.
@@ -1161,6 +1163,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AdServiceClient interface {
 	GetAds(ctx context.Context, in *AdRequest, opts ...grpc.CallOption) (*AdResponse, error)
+	RecordClick(ctx context.Context, in *RecordClickRequest, opts ...grpc.CallOption) (*RecordClickResponse, error)
+	GetAdStats(ctx context.Context, in *GetAdStatsRequest, opts ...grpc.CallOption) (*GetAdStatsResponse, error)
 }
 
 type adServiceClient struct {
@@ -1181,11 +1185,33 @@ func (c *adServiceClient) GetAds(ctx context.Context, in *AdRequest, opts ...grp
 	return out, nil
 }
 
+func (c *adServiceClient) RecordClick(ctx context.Context, in *RecordClickRequest, opts ...grpc.CallOption) (*RecordClickResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RecordClickResponse)
+	err := c.cc.Invoke(ctx, AdService_RecordClick_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *adServiceClient) GetAdStats(ctx context.Context, in *GetAdStatsRequest, opts ...grpc.CallOption) (*GetAdStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAdStatsResponse)
+	err := c.cc.Invoke(ctx, AdService_GetAdStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AdServiceServer is the server API for AdService service.
 // All implementations must embed UnimplementedAdServiceServer
 // for forward compatibility.
 type AdServiceServer interface {
 	GetAds(context.Context, *AdRequest) (*AdResponse, error)
+	RecordClick(context.Context, *RecordClickRequest) (*RecordClickResponse, error)
+	GetAdStats(context.Context, *GetAdStatsRequest) (*GetAdStatsResponse, error)
 	mustEmbedUnimplementedAdServiceServer()
 }
 
@@ -1198,6 +1224,12 @@ type UnimplementedAdServiceServer struct{}
 
 func (UnimplementedAdServiceServer) GetAds(context.Context, *AdRequest) (*AdResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAds not implemented")
+}
+func (UnimplementedAdServiceServer) RecordClick(context.Context, *RecordClickRequest) (*RecordClickResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RecordClick not implemented")
+}
+func (UnimplementedAdServiceServer) GetAdStats(context.Context, *GetAdStatsRequest) (*GetAdStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAdStats not implemented")
 }
 func (UnimplementedAdServiceServer) mustEmbedUnimplementedAdServiceServer() {}
 func (UnimplementedAdServiceServer) testEmbeddedByValue()                   {}
@@ -1238,6 +1270,42 @@ func _AdService_GetAds_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AdService_RecordClick_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RecordClickRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdServiceServer).RecordClick(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdService_RecordClick_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdServiceServer).RecordClick(ctx, req.(*RecordClickRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AdService_GetAdStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAdStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AdServiceServer).GetAdStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AdService_GetAdStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AdServiceServer).GetAdStats(ctx, req.(*GetAdStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AdService_ServiceDesc is the grpc.ServiceDesc for AdService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1248,6 +1316,14 @@ var AdService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAds",
 			Handler:    _AdService_GetAds_Handler,
+		},
+		{
+			MethodName: "RecordClick",
+			Handler:    _AdService_RecordClick_Handler,
+		},
+		{
+			MethodName: "GetAdStats",
+			Handler:    _AdService_GetAdStats_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
