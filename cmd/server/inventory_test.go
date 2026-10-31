@@ -572,7 +572,7 @@ func TestIdempotencyKey_PassedToCheckoutAndDoubleSubmitShowsTheSameOrder(t *test
 	fe := newFakeFrontendWithCheckout(t, sampleCatalog(), &fakeCart{}, kc)
 
 	sameKey := strings.Repeat("k", 24)
-	body := goodOrder + "&idempotency_key="+sameKey
+	body := goodOrder + "&idempotency_key=" + sameKey
 	r1 := do(fe, http.MethodPost, "/cart/checkout", body, nil)
 	r2 := do(fe, http.MethodPost, "/cart/checkout", body, nil) // double click / reload of the POST
 	if r1.Code != http.StatusOK || r2.Code != http.StatusOK {
@@ -668,23 +668,77 @@ func TestCheckout_OutOfStockGives422WithTheMessageAndALinkToTheCart(t *testing.T
 	}
 }
 
-func TestCheckout_OtherFailuresKeepTheirPages(t *testing.T) {
-	// declined card: 422, no cart link; spent attempt: cart link; other 422: no link
-	for _, c := range []struct {
-		err  error
-		want string
-		link bool
-	}{
-		{status.Error(codes.FailedPrecondition, "card_declined: Your card (ending 0454) was declined by the issuer"), "Your card (ending 0454) was declined by the issuer", false},
-		{status.Error(codes.FailedPrecondition, "this attempt failed, start the checkout again"), "This attempt failed, start the checkout again", true},
-		{status.Error(codes.FailedPrecondition, "cart is empty"), "Cart is empty", false},
-		{status.Error(codes.Unavailable, "stock check unavailable, try again"), msgUnavailable, false},
+func TestCheckout_EveryFailurePageLinksBackToAFreshCart(t *testing.T) {
+	setOrdersEnabled(t, true)
+	for name, err := range map[string]error{
+		"declined card":             status.Error(codes.FailedPrecondition, "card_declined: Your card (ending 0454) was declined by the issuer"),
+		"declined card (internal)":  status.Error(codes.Internal, "failed to charge card: could not charge the card: rpc error: code = InvalidArgument desc = expired_card: Your credit card (ending 0454) expired on 1/2020"),
+		"out of stock":              status.Error(codes.FailedPrecondition, `out of stock: "Tote Bag" (sold out)`),
+		"spent attempt (key reuse)": status.Error(codes.FailedPrecondition, "this attempt failed, start the checkout again"),
+		"shipping rejected":         status.Error(codes.InvalidArgument, "shipping: address is not deliverable"),
+		"cart is empty":             status.Error(codes.FailedPrecondition, "cart is empty"),
+		"stock check unavailable":   status.Error(codes.Unavailable, "stock check unavailable, try again"),
+		"checkout deadline":         status.Error(codes.DeadlineExceeded, "slow"),
+		"internal":                  status.Error(codes.Internal, "failed to ship order"),
 	} {
-		fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, &fakeCheckout{err: c.err})
+		fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, &fakeCheckout{err: err})
 		rr := do(fe, http.MethodPost, "/cart/checkout", goodOrder, nil)
-		assertContains(t, rr.Body.String(), c.want)
-		if has := strings.Contains(rr.Body.String(), "Back to your cart"); has != c.link {
-			t.Errorf("%v: cart link %v, want %v", c.err, has, c.link)
+		if rr.Code < 400 {
+			t.Errorf("%s: status %d", name, rr.Code)
+		}
+		assertContains(t, rr.Body.String(), `href="/cart">Back to your cart</a>`)
+		if t.Failed() {
+			t.Logf("failing case: %s", name)
+		}
+	}
+	// a refused form never reaches checkout but is a checkout page as well
+	fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, &fakeCheckout{})
+	rr := do(fe, http.MethodPost, "/cart/checkout", form("email", "nope"), nil)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid form: status %d", rr.Code)
+	}
+	assertContains(t, rr.Body.String(), `href="/cart">Back to your cart</a>`)
+}
+
+func TestCheckout_AttemptFailedReplayGives422WithTheMessage(t *testing.T) {
+	co := &fakeCheckout{err: status.Error(codes.FailedPrecondition, "this attempt failed, start the checkout again")}
+	fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, co)
+	rr := do(fe, http.MethodPost, "/cart/checkout", goodOrder+"&idempotency_key="+newIdempotencyKey(), nil)
+	if rr.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422", rr.Code)
+	}
+	assertContains(t, rr.Body.String(), "This attempt failed, start the checkout again", `href="/cart">Back to your cart</a>`)
+}
+
+func TestCheckout_ConcurrentDuplicateShowsTheProcessingPageWithoutACartLink(t *testing.T) {
+	setOrdersEnabled(t, true)
+	co := &fakeCheckout{err: status.Error(codes.Aborted, "this order is already being processed")}
+	fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, co)
+	rr := do(fe, http.MethodPost, "/cart/checkout", goodOrder+"&idempotency_key="+newIdempotencyKey(), nil)
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("status %d, want 409", rr.Code)
+	}
+	html := rr.Body.String()
+	assertContains(t, html, "Your order is being processed", `href="/orders">Your orders</a>`)
+	if strings.Contains(html, "Back to your cart") {
+		t.Error("a new attempt (fresh key) while the first one runs could charge twice: no cart link on 409")
+	}
+}
+
+func TestErrorPagesOutsideCheckoutHaveNoCartLink(t *testing.T) {
+	fe := newFakeFrontendWith(t, sampleCatalog(), &fakeCart{}, &fakeCheckout{})
+	rr := do(fe, http.MethodPost, "/cart", form("product_id", "soap-1", "quantity", "1"), nil)
+	if rr.Code != http.StatusUnprocessableEntity || strings.Contains(rr.Body.String(), "Back to your cart") {
+		t.Errorf("add to cart error: status %d, cart link present", rr.Code)
+	}
+}
+
+func TestCart_PageIsNotCached(t *testing.T) {
+	cart := &fakeCart{items: []*pb.CartItem{{ProductId: "pan-05", Quantity: 1}}}
+	for name, c := range map[string]*fakeCart{"with items": cart, "empty": {}} {
+		fe2 := frontendWithInventory(t, nil, c, nil)
+		if got := do(fe2, http.MethodGet, "/cart", "", nil).Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s: Cache-Control %q, want no-store (Back must not restore a form with a spent key)", name, got)
 		}
 	}
 }

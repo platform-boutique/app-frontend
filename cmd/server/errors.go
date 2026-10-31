@@ -155,6 +155,18 @@ func classifyError(err error, code int) errorPage {
 // classified, readable part. htmx requests get the message as a fragment for the
 // #page-alert region (htmx would otherwise swap nothing for a 4xx/5xx answer).
 func (fe *frontendServer) renderHTTPError(log logrus.FieldLogger, r *http.Request, w http.ResponseWriter, err error, code int) {
+	fe.renderError(log, r, w, err, code, false)
+}
+
+// renderCheckoutError is renderHTTPError for a refused or failed order: the page always offers
+// "Back to your cart", because the cart renders a fresh checkout form (a fresh idempotency key,
+// the old one belongs to the failed attempt). Exception: "your order is being processed" (409)
+// must not send the visitor to a new attempt while the first one is still running; it points to Orders.
+func (fe *frontendServer) renderCheckoutError(log logrus.FieldLogger, r *http.Request, w http.ResponseWriter, err error, code int) {
+	fe.renderError(log, r, w, err, code, true)
+}
+
+func (fe *frontendServer) renderError(log logrus.FieldLogger, r *http.Request, w http.ResponseWriter, err error, code int, checkout bool) {
 	page := classifyError(err, code)
 	entry := log.WithField("error", fmt.Sprintf("%+v", err)).WithField("status", page.Code)
 	if page.Code >= http.StatusInternalServerError {
@@ -169,7 +181,8 @@ func (fe *frontendServer) renderHTTPError(log logrus.FieldLogger, r *http.Reques
 		"status_code": page.Code,
 		"status":      http.StatusText(page.Code),
 		"categories":  fe.navCategories(r.Context()),
-		"cart_link":   cartLinkFor(page),
+		"cart_link":   cartLinkFor(page) || (checkout && page.Code != http.StatusConflict),
+		"orders_link": checkout && page.Code == http.StatusConflict && ordersEnabled,
 	}
 	name := "error"
 	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {

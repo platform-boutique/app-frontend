@@ -346,6 +346,8 @@ func (fe *frontendServer) emptyCartHandler(w http.ResponseWriter, r *http.Reques
 func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("view user cart")
+	// the page holds the checkout form and its idempotency key: Back must not restore an old form (and its spent key)
+	w.Header().Set("Cache-Control", "no-store")
 
 	// fetch currencies and cart in parallel
 	var (
@@ -494,7 +496,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 
 	idemKey := strings.TrimSpace(r.FormValue("idempotency_key"))
 	if !validIdempotencyKey(idemKey) {
-		fe.renderHTTPError(log, r, w, errors.New("The checkout form is out of date. Please open your cart again and place the order from there."), http.StatusUnprocessableEntity)
+		fe.renderCheckoutError(log, r, w, errors.New("The checkout form is out of date. Please open your cart again and place the order from there."), http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -511,7 +513,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 		CcCVV:         ccCVV,
 	}
 	if err := payload.Validate(); err != nil {
-		fe.renderHTTPError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
+		fe.renderCheckoutError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
 		return
 	}
 
@@ -539,7 +541,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 			},
 		})
 	if err != nil {
-		fe.renderHTTPError(log, r, w, errors.Wrap(err, "failed to complete the order"), http.StatusInternalServerError)
+		fe.renderCheckoutError(log, r, w, errors.Wrap(err, "failed to complete the order"), http.StatusInternalServerError)
 		return
 	}
 	log.WithField("order", order.GetOrder().GetOrderId()).Info("order placed")

@@ -10,6 +10,8 @@
             <div class="notice-actions">
                 {{ if .cart_link }}<a class="btn btn-primary" href="{{ $.baseUrl }}/cart">Back to your cart</a>
                 <a class="btn btn-secondary" href="{{ $.baseUrl }}/">Back to the shop</a>
+                {{ else if .orders_link }}<a class="btn btn-primary" href="{{ $.baseUrl }}/orders">Your orders</a>
+                <a class="btn btn-secondary" href="{{ $.baseUrl }}/">Back to the shop</a>
                 {{ else }}<a class="btn btn-primary" href="{{ $.baseUrl }}/">Back to the shop</a>{{ end }}
             </div>
         </div>
