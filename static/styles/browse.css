@@ -54,10 +54,10 @@
 .dept-tile { background-image: linear-gradient(160deg, var(--dept-tint, var(--color-surface-2)) 0%, transparent 70%); }
 .dept-women { --dept-tint: var(--color-accent-soft); }
 .dept-men { --dept-tint: var(--color-sage); }
-.dept-accessories { --dept-tint: color-mix(in srgb, var(--color-sun) 35%, transparent); }
+.dept-accessories { --dept-tint: color-mix(in srgb, var(--color-brass) 35%, transparent); }
 .dept-beauty { --dept-tint: var(--color-accent-soft); }
 .dept-home { --dept-tint: var(--color-sage); }
-.dept-kitchen { --dept-tint: color-mix(in srgb, var(--color-sun) 35%, transparent); }
+.dept-kitchen { --dept-tint: color-mix(in srgb, var(--color-brass) 35%, transparent); }
 .dept-sports { --dept-tint: var(--color-sage); }
 
 /* ----------------------------------------------------------------- toolbar */

@@ -12,28 +12,29 @@
 :root {
   color-scheme: light;
 
-  /* colour: light */
-  --color-bg: #faf8f5;
+  /* colour: light. "Evergreen & Oat": oat page, white cards, evergreen accent,
+     brass for stars and small highlights. Run tools/check-contrast.py after a change. */
+  --color-bg: #f4f3ee; /* oat */
   --color-surface: #ffffff;
-  --color-surface-2: #f3efe9;
-  --color-media: #f1ede7;
-  --color-text: #1f1b16;
-  --color-text-muted: #5b5349;
-  --color-border: #e3dcd2;
-  --color-border-strong: #c9bfb2;
-  --color-control-border: #8d8174; /* inputs, selects, secondary buttons: >= 3:1 on bg, surface, surface-2 (WCAG 1.4.11) */
-  --color-accent: #a8431f;
-  --color-accent-hover: #8a3417;
+  --color-surface-2: #ecebe4;
+  --color-media: #eeeeea; /* panel behind product photos: neutral, no colour cast */
+  --color-text: #17211b;
+  --color-text-muted: #55605a;
+  --color-border: #dad9d0;
+  --color-border-strong: #c3c2b8;
+  --color-control-border: #78877d; /* inputs, selects, secondary buttons: >= 3:1 on bg, surface, surface-2 (WCAG 1.4.11) */
+  --color-accent: #1f5a43; /* evergreen: logo, primary buttons, links, focus */
+  --color-accent-hover: #174734;
   --color-accent-contrast: #ffffff;
-  --color-accent-soft: #f7e6dc;
-  --color-sage: #dde6d6;
-  --color-sage-strong: #4f6b45;
-  --color-sun: #f2c46d;
-  --color-danger: #a3261b;
-  --color-danger-soft: #fbe9e7;
-  --color-success: #2e6b3a;
-  --color-success-soft: #e4f1e5;
-  --color-focus: #a8431f;
+  --color-accent-soft: #dfeadf; /* hero, soft badges */
+  --color-sage: #e3e8dd; /* quiet green-grey panels (ad card, hero glow, departments) */
+  --color-sage-strong: #3f5e4b; /* text and icons on sage and surface */
+  --color-brass: #a58334; /* stars, ad and hero highlights (graphics, not text); the approved #b08d3c gave 2.8:1 on the oat page */
+  --color-danger: #a8261d;
+  --color-danger-soft: #fbe9e6;
+  --color-success: #0a6578; /* teal-blue on purpose: must not read as the evergreen accent */
+  --color-success-soft: #ddeef0;
+  --color-focus: #1f5a43;
   --media-blend: multiply;
   --media-filter: none;
 
@@ -66,9 +67,9 @@
   --radius-md: 12px;
   --radius-lg: 20px;
   --radius-pill: 999px;
-  --shadow-sm: 0 1px 2px rgb(31 27 22 / 0.06), 0 1px 3px rgb(31 27 22 / 0.08);
-  --shadow-md: 0 4px 12px rgb(31 27 22 / 0.08), 0 2px 4px rgb(31 27 22 / 0.06);
-  --shadow-lg: 0 12px 32px rgb(31 27 22 / 0.12);
+  --shadow-sm: 0 1px 2px rgb(15 21 17 / 0.06), 0 1px 3px rgb(15 21 17 / 0.08);
+  --shadow-md: 0 4px 12px rgb(15 21 17 / 0.08), 0 2px 4px rgb(15 21 17 / 0.06);
+  --shadow-lg: 0 12px 32px rgb(15 21 17 / 0.12);
 
   /* layout */
   --container: 1200px; /* grows on wide screens, see the media queries below */
@@ -98,27 +99,27 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --color-bg: #15130f;
-    --color-surface: #1f1c17;
-    --color-surface-2: #29251f;
-    --color-media: #2e2a23;
-    --color-text: #f1ece4;
-    --color-text-muted: #b6ac9e;
-    --color-border: #3a342c;
-    --color-border-strong: #564e43;
-    --color-control-border: #7a7061;
-    --color-accent: #f09a6f;
-    --color-accent-hover: #f5b393;
-    --color-accent-contrast: #1d120c;
-    --color-accent-soft: #3a261c;
-    --color-sage: #26301f;
-    --color-sage-strong: #a9c49b;
-    --color-sun: #c99a45;
-    --color-danger: #ff8a7e;
-    --color-danger-soft: #3b1d19;
-    --color-success: #8fd19b;
-    --color-success-soft: #1c3020;
-    --color-focus: #f5b393;
+    --color-bg: #0f1512;
+    --color-surface: #171f1b;
+    --color-surface-2: #1f2923;
+    --color-media: #202a24;
+    --color-text: #eaf0ec;
+    --color-text-muted: #a5b2aa;
+    --color-border: #2c3832;
+    --color-border-strong: #41504a;
+    --color-control-border: #70827a;
+    --color-accent: #7fcf9f;
+    --color-accent-hover: #9adbb3;
+    --color-accent-contrast: #0c1a12;
+    --color-accent-soft: #1c2c24;
+    --color-sage: #1a2620;
+    --color-sage-strong: #a9cdb5;
+    --color-brass: #d4b25e;
+    --color-danger: #ff8f84;
+    --color-danger-soft: #3a1d1a;
+    --color-success: #66d0d8;
+    --color-success-soft: #102f35;
+    --color-focus: #9adbb3;
     --media-blend: normal;
     --media-filter: brightness(0.9);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
@@ -127,30 +128,31 @@
   }
 }
 
-/* colour: dark (explicit choice) - keep in sync with the block above */
+/* colour: dark (explicit choice) - keep in sync with the block above
+   (tools/check-contrast.py fails when the two differ) */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --color-bg: #15130f;
-  --color-surface: #1f1c17;
-  --color-surface-2: #29251f;
-  --color-media: #2e2a23;
-  --color-text: #f1ece4;
-  --color-text-muted: #b6ac9e;
-  --color-border: #3a342c;
-  --color-border-strong: #564e43;
-  --color-control-border: #7a7061;
-  --color-accent: #f09a6f;
-  --color-accent-hover: #f5b393;
-  --color-accent-contrast: #1d120c;
-  --color-accent-soft: #3a261c;
-  --color-sage: #26301f;
-  --color-sage-strong: #a9c49b;
-  --color-sun: #c99a45;
-  --color-danger: #ff8a7e;
-  --color-danger-soft: #3b1d19;
-  --color-success: #8fd19b;
-  --color-success-soft: #1c3020;
-  --color-focus: #f5b393;
+  --color-bg: #0f1512;
+  --color-surface: #171f1b;
+  --color-surface-2: #1f2923;
+  --color-media: #202a24;
+  --color-text: #eaf0ec;
+  --color-text-muted: #a5b2aa;
+  --color-border: #2c3832;
+  --color-border-strong: #41504a;
+  --color-control-border: #70827a;
+  --color-accent: #7fcf9f;
+  --color-accent-hover: #9adbb3;
+  --color-accent-contrast: #0c1a12;
+  --color-accent-soft: #1c2c24;
+  --color-sage: #1a2620;
+  --color-sage-strong: #a9cdb5;
+  --color-brass: #d4b25e;
+  --color-danger: #ff8f84;
+  --color-danger-soft: #3a1d1a;
+  --color-success: #66d0d8;
+  --color-success-soft: #102f35;
+  --color-focus: #9adbb3;
   --media-blend: normal;
   --media-filter: brightness(0.9);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
@@ -525,7 +527,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .hero-art .a-accent { fill: var(--color-accent); }
 .hero-art .a-sage { fill: var(--color-sage-strong); }
-.hero-art .a-sun { fill: var(--color-sun); }
+.hero-art .a-sun { fill: var(--color-brass); }
 .hero-art .a-surface { fill: var(--color-surface); }
 .hero-art .a-line { stroke: var(--color-text); }
 
