@@ -28,7 +28,11 @@
     function scrub(value, depth) {
         if (typeof value === 'string') { return clean(value); }
         if (value && typeof value === 'object' && depth < 12) {
-            Object.keys(value).forEach(function (k) { value[k] = scrub(value[k], depth + 1); });
+            Object.keys(value).forEach(function (k) {
+                var cleaned = scrub(value[k], depth + 1);
+                // only write when something changed: some objects Faro hands us are read-only
+                if (cleaned !== value[k]) { value[k] = cleaned; }
+            });
         }
         return value;
     }
@@ -89,6 +93,36 @@
             shop_user_signed_in: String(!!cfg.shopUserSignedIn)
         })
     });
+
+    // The page load as a trace. Faro 2.13 ships fetch and XHR tracing but no document-load instrumentation
+    // (the OpenTelemetry one needs a JavaScript build), so this makes the one span that matters by hand:
+    // "documentLoad", from the start of the navigation to the end of the load event. Its parent is the
+    // server span of this page, from <meta name="traceparent"> (only there when the server has telemetry on),
+    // so the browser and the Go server show up as ONE trace.
+    function traceDocumentLoad() {
+        var otel = instance.api.getOTEL();
+        var nav = performance.getEntriesByType('navigation')[0];
+        if (!otel || !nav) { return; }
+        var meta = document.querySelector('meta[name="traceparent"]');
+        var tp = meta && /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/.exec(meta.content);
+        var parent = otel.context.active();
+        if (tp) {
+            parent = otel.trace.setSpanContext(parent, { traceId: tp[1], spanId: tp[2], traceFlags: parseInt(tp[3], 16), isRemote: true });
+        }
+        var span = otel.trace.getTracer('everly-document-load').startSpan('documentLoad', {
+            startTime: performance.timeOrigin + nav.startTime,
+            attributes: { 'http.url': location.href }
+        }, parent);
+        var finish = function () {
+            span.setAttribute('dom_content_loaded_ms', Math.round(nav.domContentLoadedEventEnd));
+            span.end(performance.timeOrigin + (nav.loadEventEnd || performance.now()));
+        };
+        if (document.readyState === 'complete') { finish(); } else {
+            // loadEventEnd is only filled in after the load handlers ran: wait one tick
+            window.addEventListener('load', function () { setTimeout(finish, 0); });
+        }
+    }
+    traceDocumentLoad();
 
     // One event per page view (the pages are server-rendered, so a navigation is a page load).
     instance.api.pushEvent('page_view', { path: pathOf(location.href) });
