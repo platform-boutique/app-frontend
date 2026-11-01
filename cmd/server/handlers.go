@@ -681,6 +681,7 @@ func injectCommonTemplateData(r *http.Request, payload map[string]interface{}) m
 	if u := userOf(r); u != nil {
 		data["user"] = u
 	}
+	faroTemplateData(r, data)
 	for k, v := range payload {
 		data[k] = v
 	}

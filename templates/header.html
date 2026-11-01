@@ -31,6 +31,18 @@
     {{/* 4xx/5xx answers are swapped too: the server sends the error message for #page-alert (HX-Retarget). */}}
     <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true},{"code":"...","swap":true}]}'>
     <script defer src="{{ $.baseUrl }}/static/js/htmx.min.js"></script>
+    {{/*
+      Grafana Faro (browser RUM), only when FARO_COLLECTOR_URL is set. No inline code: the settings are a JSON
+      block that /static/js/faro-init.js reads, the scripts are plain files (they run in this order, after parsing).
+      The traceparent meta tag is the server span of THIS page; Faro's document-load trace becomes its child.
+    */}}
+    {{ if $.faro }}
+    {{ if $.faro_traceparent }}<meta name="traceparent" content="{{ $.faro_traceparent }}">{{ end }}
+    <script type="application/json" id="faro-config">{{ $.faro }}</script>
+    <script defer src="{{ $.baseUrl }}/static/js/vendor/faro/faro-web-sdk.iife.js"></script>
+    <script defer src="{{ $.baseUrl }}/static/js/vendor/faro/faro-web-tracing.iife.js"></script>
+    <script defer src="{{ $.baseUrl }}/static/js/faro-init.js"></script>
+    {{ end }}
     <link rel="icon" type="image/svg+xml" href="{{ $.baseUrl }}/static/favicon.svg">
 </head>
 

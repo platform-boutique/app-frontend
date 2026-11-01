@@ -113,6 +113,19 @@ func main() {
 	}
 	log.Out = os.Stdout
 
+	// --- Browser RUM (Grafana Faro): validated first so a typo fails the start, not the first page ---
+	faroCfg, err := faroSettingsFromEnv(os.Getenv)
+	if err != nil {
+		log.Fatalf("invalid configuration: %v", err)
+	}
+	faro = faroCfg
+	if faro != nil {
+		log.Infof("Faro RUM enabled: app %q version %q env %q, collector %s, session sample rate %v",
+			faro.AppName, faro.AppVersion, faro.Env, faro.CollectorURL, faro.SampleRate)
+	} else {
+		log.Info("FARO_COLLECTOR_URL is empty: browser RUM (Faro) is off")
+	}
+
 	// --- Observability ---
 	initMetrics()
 	startMetricsServer(log)
