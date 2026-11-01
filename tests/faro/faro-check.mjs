@@ -42,7 +42,8 @@ const page = await ctx.newPage();
 // what the browser itself saw: requests with their headers, console errors
 const sent = [];
 const consoleErrors = [];
-page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('500') && !m.text().includes('ERR_FAILED')) consoleErrors.push(m.text()); });
+page.on('console', (m) => { // htmx itself logs the two failures this script forces on purpose (and the browser logs the 500 / aborted request)
+  if (m.type() === 'error' && !/^htmx:|500|ERR_FAILED/.test(m.text())) consoleErrors.push(m.text()); });
 page.on('pageerror', (e) => consoleErrors.push(String(e)));
 page.on('request', async (req) => {
   try { sent.push({ url: req.url(), method: req.method(), headers: await req.allHeaders() }); } catch { /* page closed */ }
@@ -50,7 +51,8 @@ page.on('request', async (req) => {
 
 const footerSession = async () => (await page.locator('.footer-debug').innerText()).match(/session-id: ([0-9a-f-]{36})/)?.[1];
 const metaTraceparent = () => page.evaluate(() => document.querySelector('meta[name="traceparent"]')?.content ?? null);
-const settle = async () => { await page.waitForLoadState('load'); await sleep(600); };
+// Faro exports spans in batches 1 s after they end; a page left sooner loses its span (README, limits)
+const settle = async () => { await page.waitForLoadState('load'); await sleep(1600); };
 const firstProduct = () => page.locator('a[href^="/product/"]').first().getAttribute('href');
 
 async function finish() {
@@ -102,27 +104,35 @@ try {
   if (MODE === 'full') check('each page has its own server span', !!productTP && productTP !== homeTP && productTP.split('-')[1] !== homeTP.split('-')[1]);
 
   // ---- 3. htmx requests on the home page: paging, search, then two forced failures ----
-  await page.goto(BASE + '/');
+  // Not from the landing page: there the server answers an htmx request with HX-Redirect (full page load, by
+  // design), which would unload the page before Faro exports the span. A paging view stays in the page.
+  await page.goto(BASE + '/?page=2');
   await settle();
   const htmxReqs = () => sent.filter((r) => r.headers['hx-request'] === 'true');
   await page.locator('a.page-next').first().click();
-  await page.waitForResponse((r) => r.url().includes('page=2') && r.request().headers()['hx-request'] === 'true');
-  await sleep(500);
+  await page.waitForResponse((r) => r.url().includes('page=3') && r.request().headers()['hx-request'] === 'true');
+  await sleep(1600);
+  // first search: paging view -> search view changes the layout, so the server answers HX-Redirect (full load)
+  await page.locator('#q').fill('mug');
+  await page.locator('#q').press('Enter');
+  await page.waitForURL(/q=mug/);
+  await settle();
+  // second search: stays in the page (XHR + swap)
   await page.locator('#q').fill(NEEDLE);
   await page.locator('#q').press('Enter');
   await page.waitForResponse((r) => r.url().includes('q=' + NEEDLE) && r.request().headers()['hx-request'] === 'true');
-  await sleep(500);
+  await sleep(1600);
   await page.route((u) => u.search.includes('boom=1'), (route) => route.fulfill({ status: 500, contentType: 'text/plain', body: 'secret failure body' }));
   await page.route((u) => u.search.includes('boom=2'), (route) => route.abort());
-  await page.evaluate(() => window.htmx.ajax('GET', '/?boom=1&q=zebraneedle', { target: '#page-alert', swap: 'innerHTML' }));
-  await sleep(500);
-  await page.evaluate(() => window.htmx.ajax('GET', '/orders/00000000-0000-0000-0000-000000000000?boom=2', { target: '#page-alert', swap: 'innerHTML' }));
-  await sleep(500);
+  await page.evaluate(() => window.htmx.ajax('GET', '/?boom=1&q=zebraneedle', { target: '#page-alert', swap: 'innerHTML' }).catch(() => 'rejected'));
+  await sleep(1600);
+  await page.evaluate(() => window.htmx.ajax('GET', '/orders/00000000-0000-0000-0000-000000000000?boom=2', { target: '#page-alert', swap: 'innerHTML' }).catch(() => 'rejected'));
+  await sleep(1600);
 
   // ---- 4. cross-origin request: must NOT get a traceparent ----
   const other = `http://127.0.0.1:${PORT}/ping`; // another origin than BASE (127.0.0.1 vs localhost, other port)
   await page.evaluate((u) => fetch(u).then((r) => r.text()), other);
-  await sleep(500);
+  await sleep(1600);
 
   // ---- 5. add to cart (plain form post), checkout, order page with the live poll ----
   let orderId = null;
@@ -149,7 +159,7 @@ try {
     // the status block polls its own URL every 15 s with htmx
     const poll = await page.waitForResponse((r) => r.url().includes(`/orders/${orderId}`) && r.request().headers()['hx-request'] === 'true', { timeout: 25000 }).catch(() => null);
     check('order page polled itself with htmx', !!poll);
-    await sleep(500);
+    await sleep(1600);
   }
 
   // ---- 6. leave the page so web vitals are flushed, wait for the collector ----
@@ -208,9 +218,11 @@ try {
   }
 
   // htmx requests carry traceparent, same origin only
-  const hx = htmxReqs().filter((r) => !r.url.includes('boom=2'));
-  check('every htmx request carried a traceparent header', hx.length >= 3 && hx.every((r) => /^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/.test(r.headers.traceparent ?? '')), `${hx.length} htmx requests`);
-  const hxSpans = hx.map((r) => {
+  // the two forced failures (boom=1 answered by the test, boom=2 aborted) never reach the server
+  const hx = htmxReqs().filter((r) => !r.url.includes('boom='));
+  check('every htmx request carried a traceparent header', hx.length >= (PLACE_ORDER ? 4 : 3) && hx.every((r) => /^00-[0-9a-f]{32}-[0-9a-f]{16}-0[01]$/.test(r.headers.traceparent ?? '')), `${hx.length} htmx requests`);
+  // (the request followed by the HX-Redirect page load, q=mug, unloads the page before Faro exports its span)
+  const hxSpans = hx.filter((r) => !r.url.includes('q=mug')).map((r) => {
     const [, t, s] = (r.headers.traceparent ?? '--').split('-');
     return spans.find((sp) => sp.traceId === t && sp.spanId === s);
   });
