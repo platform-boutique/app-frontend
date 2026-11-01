@@ -23,7 +23,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/logout` | POST | Sign out: `Logout` at user-service (best effort), expire `shop_auth`, `303` to `/`. `Sec-Fetch-Site: cross-site`: `403` |
 | `/logout` | GET | Expire all cookies (including `shop_auth`, after a best-effort `Logout` call) and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
-| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `favicon.svg`, product images (`img/products/`) |
+| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`) |
 | `/_healthz` | GET | Liveness/readiness (`ok`) |
 | `/robots.txt` | GET | `Disallow: /` |
 

@@ -29,6 +29,11 @@
 | `OTEL_SERVICE_NAME` | No | `frontend` | `service.name` — becomes the Prometheus `job` and the Loki `service_name`; keep the default, dashboards depend on it |
 | `PYROSCOPE_ADDR` | No | `http://pyroscope:4040` | Profiles use the Pyroscope SDK push protocol (**not** OTLP). Point it at Alloy (`http://alloy.monitoring.svc.cluster.local:4040`), which forwards to Pyroscope, or directly at Pyroscope |
 | `ENABLE_PROFILING` | No | off | `1` starts the Pyroscope SDK |
+| `FARO_COLLECTOR_URL` | No | empty (Faro off) | Grafana Faro receiver URL **as the visitor's browser reaches it**, e.g. `https://faro.example.com/collect` (Alloy `faro.receiver`). Only `http://` or `https://`, a host, no credentials; anything else stops the process at start with a message. Empty: no Faro script, config block or `traceparent` meta tag is rendered. See the README section "RUM (Grafana Faro)" |
+| `FARO_APP_NAME` | No | `everly-frontend` | Faro `app.name` (at most 128 characters) |
+| `FARO_APP_VERSION` | No | `dev` | Faro `app.version` (the service reports no build version of its own) |
+| `FARO_ENV` | No | `local` | Faro `app.environment` |
+| `FARO_SESSION_SAMPLE_RATE` | No | `1` | Share of browser sessions that report, a number from 0 to 1 (checked at start) |
 
 Notes:
 

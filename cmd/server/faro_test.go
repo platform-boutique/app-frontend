@@ -191,7 +191,7 @@ func TestFaroPage_On(t *testing.T) {
 	i1 := strings.Index(html, "faro-web-sdk.iife.js")
 	i2 := strings.Index(html, "faro-web-tracing.iife.js")
 	i3 := strings.Index(html, "faro-init.js")
-	if !(i1 < i2 && i2 < i3) {
+	if i1 >= i2 || i2 >= i3 {
 		t.Errorf("script order wrong: %d %d %d", i1, i2, i3)
 	}
 	if strings.Contains(html, `name="traceparent"`) {

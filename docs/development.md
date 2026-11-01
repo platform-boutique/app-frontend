@@ -59,6 +59,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── favicon.svg
 │   └── img/products/    # product photos
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
+├── tests/faro/          # real-browser check of the Faro RUM wiring (run.sh, not run by CI) and its throwaway OTLP sink
 ├── .github/workflows/   # ci.yaml (pull requests), release.yaml (v* tags / manual) - callers of platform-demo-workflows
 ├── Dockerfile
 └── go.mod / go.sum / .golangci.yaml

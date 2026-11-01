@@ -43,7 +43,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/logout` | POST | Sign out: `Logout` at user-service (best effort), expire `shop_auth`, `303` to `/`. `Sec-Fetch-Site: cross-site`: `403` |
 | `/logout` | GET | Expire all cookies (including `shop_auth`, after a best-effort `Logout` call) and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
-| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `favicon.svg`, product images (`img/products/`) |
+| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`) |
 | `/_healthz` | GET | Liveness/readiness (`ok`) |
 | `/robots.txt` | GET | `Disallow: /` |
 
@@ -126,6 +126,11 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 | `OTEL_SERVICE_NAME` | No | `frontend` | `service.name` — becomes the Prometheus `job` and the Loki `service_name`; keep the default, dashboards depend on it |
 | `PYROSCOPE_ADDR` | No | `http://pyroscope:4040` | Profiles use the Pyroscope SDK push protocol (**not** OTLP). Point it at Alloy (`http://alloy.monitoring.svc.cluster.local:4040`), which forwards to Pyroscope, or directly at Pyroscope |
 | `ENABLE_PROFILING` | No | off | `1` starts the Pyroscope SDK |
+| `FARO_COLLECTOR_URL` | No | empty (Faro off) | Grafana Faro receiver URL **as the visitor's browser reaches it**, e.g. `https://faro.example.com/collect` (Alloy `faro.receiver`). Only `http://` or `https://`, a host, no credentials; anything else stops the process at start with a message. Empty: no Faro script, config block or `traceparent` meta tag is rendered. See the README section "RUM (Grafana Faro)" |
+| `FARO_APP_NAME` | No | `everly-frontend` | Faro `app.name` (at most 128 characters) |
+| `FARO_APP_VERSION` | No | `dev` | Faro `app.version` (the service reports no build version of its own) |
+| `FARO_ENV` | No | `local` | Faro `app.environment` |
+| `FARO_SESSION_SAMPLE_RATE` | No | `1` | Share of browser sessions that report, a number from 0 to 1 (checked at start) |
 
 Notes:
 
@@ -327,8 +332,66 @@ and was verified under the `restricted` Pod Security Standard on the earlier loc
 | **Metrics** | `prometheus/client_golang` registry — `http_requests_total`, `http_request_duration_seconds` (buckets 1 ms … 10 s), `http_requests_in_flight`, labelled `method`, `route`, `status_code`, plus Go runtime/process collectors — bridged into OpenTelemetry and pushed over OTLP/gRPC every 15 s. `/metrics` is still served on `METRICS_PORT` for debugging | Alloy → Mimir |
 | **Logs** | `logrus` JSON to stdout at `debug` level **and** an OTLP/gRPC hook (`otellogrus`): request path/method/id/session, response status/bytes/duration | Alloy → Loki |
 | **Profiles** | Pyroscope Go SDK (CPU, alloc/inuse objects & space) when enabled | Alloy `:4040` → Pyroscope |
+| **Browser (RUM)** | Grafana Faro Web SDK + Web Tracing in the page, only when `FARO_COLLECTOR_URL` is set: web vitals, errors, page views, fetch/XHR (htmx) traces linked to the server span of the page | Alloy `faro.receiver` → Loki / Tempo. See README "RUM (Grafana Faro)" |
 
 Every series carries `job="frontend"` (from `service.name`) and `instance=<pod name>` (`service.instance.id`), which is what the Grafana dashboards select on. Logs land in Loki with `service_name="frontend"` and trace/span ids, so a log line links to its trace.
+
+## RUM (Grafana Faro)
+
+Real-user monitoring of the browser with the Grafana Faro Web SDK. **Off unless `FARO_COLLECTOR_URL` is set**: then the pages carry no Faro script, no config block and no `traceparent` meta tag, and nothing else changes. Built as plain static files like htmx: no npm, no build step, no TypeScript in the repo or the image.
+
+**What it does** (with a collector URL set):
+
+- `templates/header.html` renders a JSON data block (`<script type="application/json" id="faro-config">`, encoded by `html/template`, so a hostile app name or version cannot end the block), the two vendored bundles and `/static/js/faro-init.js` (plain JS, commented). The server adds **no inline executable script** for Faro. The page's own two inline theme scripts and the `onchange` of the currency select were there before and are unchanged.
+- `faro-init.js` starts Faro with: web vitals, navigation and resource timings, uncaught errors, `console.error`/`warn`, one `page_view` event per page, fetch/XHR tracing, a `documentLoad` span, and the htmx failure events below.
+- **Traces tie to the server.** When the request has a valid, sampled span made by this process (otelhttp is the outermost middleware, so it exists while the template renders), the head carries `<meta name="traceparent" content="00-<trace id>-<span id>-<flags>">`. The browser's `documentLoad` span is the child of that server span, so Tempo shows browser and Go server as one trace. No span (telemetry off, `OTEL_EXPORTER_OTLP_ENDPOINT` unset, span not sampled, or a remote parent only): no meta tag, `documentLoad` starts its own trace. htmx requests are same-origin XHR and carry a W3C `traceparent` header, so the server span of a fragment or a poll is a child of the browser's request span. `propagateTraceHeaderCorsUrls` is empty: **no other origin ever gets a trace header** (checked in the browser test with a request to another origin). With a sampled-out session no header is sent at all (`omitTraceContextForUnsampledSessions`), so lowering the sample rate does not silently drop the server's traces.
+- **Shop session.** Faro's session carries the attributes `shop_session_id` (the session id the footer prints; the cookie itself stays `HttpOnly`, the value comes from the config block, not from `document.cookie`) and `shop_user_signed_in` (`"true"`/`"false"`: Faro attributes are strings; never the user id, name or e-mail). The Faro session is sticky (`persistent`), so the pages of a visit are one session even though each page is a full load.
+- **htmx failures:** `htmx:responseError` pushes the event `htmx_response_error` and `htmx:sendError` `htmx_send_error`, each with `status` (`0` for a send error) and `path` only (no query string, ids removed, never the response body).
+- **Version, name, environment:** `FARO_APP_VERSION` defaults to `dev` because the service reports no build version of its own; set it from the image tag.
+
+**Configuration** (all optional; also in the table under "Configuration"):
+
+| Variable | Default | |
+|---|---|---|
+| `FARO_COLLECTOR_URL` | empty = off | `http://` or `https://` URL the **browser** can reach (Alloy `faro.receiver`, its CORS list must allow the shop's origin). Anything else (other scheme, no host, credentials) stops the process at start with a clear message |
+| `FARO_APP_NAME` | `everly-frontend` | `app.name` |
+| `FARO_APP_VERSION` | `dev` | `app.version` |
+| `FARO_ENV` | `local` | `app.environment` |
+| `FARO_SESSION_SAMPLE_RATE` | `1` | 0..1, share of sessions that report; checked at start |
+
+There is **no `Content-Security-Policy` header** in the app (nothing sets one), so nothing was changed there. A policy later needs `script-src 'self'` plus `connect-src` for the collector origin, and would first have to replace the page's existing inline theme scripts and the `onchange` attribute.
+
+**Vendored files** (`static/js/vendor/faro/`, served by the existing `/static/` handler):
+
+| File | Package / version | sha256 |
+|---|---|---|
+| `faro-web-sdk.iife.js` | `@grafana/faro-web-sdk` 2.13.0 (`dist/bundle/faro-web-sdk.iife.js`, global `GrafanaFaroWebSdk`) | `85741c45fd1fd4875c5f25a95a7940e1171ea11e308a83d88fd5f3a5dcab8c1c` |
+| `faro-web-tracing.iife.js` | `@grafana/faro-web-tracing` 2.13.0 (`dist/bundle/faro-web-tracing.iife.js`, global `GrafanaFaroWebTracing`, needs the SDK first) | `8ca0f7dcc4d500d57ad88885e8dbe059a4d013fbfb98875fbf6b97eebec6b478` |
+| `LICENSE` | Apache-2.0 (same text in both packages) | `c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4` |
+
+Source: `npm pack` of both packages (registry integrity `sha512-k/vZL73Ii4PR6IyhyZZU/wWAlLL8HyPQ1re9CFyyIN2bXuX5b0dTYTLBHlEAK3oGqi7Nj/jGwKXoM27BNLPLuQ==` for the SDK, `sha512-HANZzP3i3L5LF3B5JrktQ94iCmCm9oqv7HfgGyuxRI3c/yoHQzz7/qJu7iflo8cJrwrdAco2vIHsljgFNeuwWA==` for tracing; tarball sha256 `ff56eb27fc207b969299b1c3fa6e51a6ce5adb3f9473d36fea913adb8b8d9042` and `b663991c4c0cb7071fcbe3f40bf62e7b9737eab9b37eb9d2e51e87c37b63edfb`), extracted in an empty directory with no scripts run (a second download after a restart gave byte-identical files); only the bundle files and the LICENSE were copied, byte for byte (the `.map` files and the `//# sourceMappingURL` comment at the end of each bundle were left as published, the maps are not shipped, so browser dev tools report a missing map, harmless). 2.13.0 was published 2026-10-22, the newest release at the time (2026-11-01), 10 days old. A Go test pins the three hashes. To update: `npm pack @grafana/faro-web-sdk@<v> @grafana/faro-web-tracing@<v>` into a new empty directory, copy the same three files, update the hashes here and in `cmd/server/faro_test.go`, run `tests/faro/run.sh`.
+
+The tracing bundle's default instrumentations are fetch and XHR only: **Faro 2.13 has no document-load instrumentation** (not in the bundle, not among the package's dependencies, and OpenTelemetry's needs a JavaScript build), so `faro-init.js` records the `documentLoad` span itself through `faro.api.getOTEL()` (start of navigation to the end of the load event, attribute `http.url`).
+
+**Privacy.** Before anything leaves the browser, `beforeSend` in `faro-init.js` walks every string of the item (page url, span attributes, events, error messages, stack traces) and blanks the VALUE of `?q=` (the search text: `/?q=` stays) and `?order=`, and replaces the id in `/orders/<id>` and `/emails/<id>` with `:id`. If scrubbing fails the item is dropped. Form fields are never read (Faro has no such instrumentation on and the script has none); the page title is not sent; the session cookie is not read. The server itself still sees every URL, as always. A trace id and the shop session id are the only identifiers added.
+
+**Run the browser check** (needs the compose stack up, Docker, Go, Node, Playwright with Chromium; `PLAYWRIGHT_DIR` defaults to `platform-demo/local`):
+
+```
+tests/faro/run.sh
+```
+
+It builds `frontend:faro-test`, starts `faro-test-fe` (compose network, the compose frontend's environment read with `docker inspect`, published on `127.0.0.1:8091`) and `faro-test-sink` (a throwaway OTLP/gRPC trace sink, `tests/faro/otlpsink`), runs `faro-check.mjs` with a fake collector on the host (`:8092`) in three passes (Faro + telemetry, Faro without telemetry as in compose, Faro off) and checks that a bad `FARO_COLLECTOR_URL` stops the process; the containers are removed at the end. It places one real order in the running shop. The Go tests (`cmd/server/faro_test.go`) run with the normal suite: settings validation, on/off rendering, JSON escaping, the traceparent rules against a real otelhttp handler with an in-memory recorder, no extra inline script, the vendored files served with a JavaScript content type and the pinned hashes.
+
+**Limits.**
+
+- A navigation by htmx (paging, search, the order poll) is a request, not a page view: no `page_view` event, no new session; only full page loads are page views. From the landing page the server answers an htmx search or paging request with `HX-Redirect` (a full load), which unloads the page: the request's span is then usually lost.
+- Faro exports spans in batches one second after they end and the SDK does not flush them when the page is left: a page left within about a second can lose its `documentLoad` span (events and measurements are flushed). The check waits for that.
+- Sampling: a sampled-out session sends nothing and no trace header; the choice is per session at its start.
+- Ad blockers and privacy extensions can block the collector or the scripts; the shop then simply runs without RUM. The collector must allow the shop's origin by CORS and accept the `x-faro-session-id` and `Idempotency-Key` request headers.
+- `OTEL_SDK_DISABLED` is not read by the frontend (telemetry is switched by `OTEL_EXPORTER_OTLP_ENDPOINT` and `ENABLE_TRACING=0`, as before); the compose frontend sets it but only `ENABLE_TRACING=0` has an effect.
+
+**Checked:** the Go tests, `node --check static/js/faro-init.js` and `tests/faro/run.sh` against a real Chromium (headless, Playwright): all assertions in the three passes pass (the list is at the top of `tests/faro/faro-check.mjs`). **Not run:** a real Alloy `faro.receiver` or Grafana (the collector in the check is a fake that records the payloads), any browser other than Chromium, a signed-in visitor (the attribute is checked as `"false"` in the browser; `"true"` only in a Go test), a sample rate below 1 in a browser, the image on Kubernetes.
 
 ## Running locally
 
@@ -393,10 +456,11 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   └── catalog.html     # department nav and tiles, search/sort toolbar, results fragment, pagination, product card
 ├── static/
 │   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css, browse.css, reviews.css, orders.css, accounts.css, mailbox.css
-│   ├── js/              # htmx.min.js (vendored), gallery.js
+│   ├── js/              # htmx.min.js (vendored), gallery.js, faro-init.js, vendor/faro/ (vendored Faro bundles)
 │   ├── favicon.svg
 │   └── img/products/    # product photos (webp), see "Product images"
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
+├── tests/faro/          # real-browser check of the Faro RUM wiring (run.sh, not run by CI) and its throwaway OTLP sink
 ├── .github/workflows/   # ci.yaml (pull requests), release.yaml (v* tags / manual) - callers of platform-demo-workflows
 ├── Dockerfile
 └── go.mod / go.sum / .golangci.yaml
