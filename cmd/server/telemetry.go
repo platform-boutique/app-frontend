@@ -108,11 +108,7 @@ func wrapRoutes(r *mux.Router) {
 // Pyroscope continuous profiling
 // ---------------------------------------------------------------------------
 
-func initProfiling(log logrus.FieldLogger) {
-	pyroscopeAddr := os.Getenv("PYROSCOPE_ADDR")
-	if pyroscopeAddr == "" {
-		pyroscopeAddr = "http://pyroscope:4040"
-	}
+func initProfiling(log logrus.FieldLogger, pyroscopeAddr string) {
 	serviceName := os.Getenv("OTEL_SERVICE_NAME")
 	if serviceName == "" {
 		serviceName = "frontend"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -196,4 +197,74 @@ func TestWrapRoutes_EmptyRouter(t *testing.T) {
 	// should not panic on an empty router
 	r := mux.NewRouter()
 	wrapRoutes(r)
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry switches: the contract of every service
+// ---------------------------------------------------------------------------
+
+func TestOtlpEndpointFrom_Matrix(t *testing.T) {
+	const ep = "http://alloy:4317"
+	cases := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"nothing set: off", map[string]string{}, ""},
+		{"endpoint set: on", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep}, ep},
+		{"endpoint blank: off", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "  "}, ""},
+		{"disabled true wins over endpoint", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "true"}, ""},
+		{"disabled TRUE (case) wins", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "TRUE"}, ""},
+		{"disabled with spaces wins", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": " true "}, ""},
+		{"disabled false does not disable", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "false"}, ep},
+		{"disabled 1 is not true (spec)", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "1"}, ep},
+		{"disabled true without endpoint: off", map[string]string{"OTEL_SDK_DISABLED": "true"}, ""},
+		{"legacy ENABLE_TRACING=0 still forces off", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "ENABLE_TRACING": "0"}, ""},
+		{"ENABLE_TRACING=1 does not turn it on", map[string]string{"ENABLE_TRACING": "1"}, ""},
+		{"legacy COLLECTOR_SERVICE_ADDR alone no longer turns it on", map[string]string{"COLLECTOR_SERVICE_ADDR": "alloy:4317"}, ""},
+		{"compose settings: off", map[string]string{"ENABLE_TRACING": "0", "OTEL_SDK_DISABLED": "true", "ENABLE_PROFILING": "0"}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := otlpEndpointFrom(envMap(c.env)); got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestPyroscopeAddrFrom_Matrix(t *testing.T) {
+	cases := []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{"nothing set: off", map[string]string{}, ""},
+		{"ENABLE_PROFILING=1 alone: off (no default address)", map[string]string{"ENABLE_PROFILING": "1"}, ""},
+		{"address set: on", map[string]string{"PYROSCOPE_ADDR": "http://alloy:4040"}, "http://alloy:4040"},
+		{"address blank: off", map[string]string{"PYROSCOPE_ADDR": " "}, ""},
+		{"legacy ENABLE_PROFILING=0 forces off", map[string]string{"PYROSCOPE_ADDR": "http://alloy:4040", "ENABLE_PROFILING": "0"}, ""},
+		{"OTEL_SDK_DISABLED does not touch profiling", map[string]string{"PYROSCOPE_ADDR": "http://alloy:4040", "OTEL_SDK_DISABLED": "true"}, "http://alloy:4040"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := pyroscopeAddrFrom(envMap(c.env)); got != c.want {
+				t.Errorf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// initTelemetry must refuse to start (and touch no global provider) when disabled.
+func TestInitTelemetry_DisabledByEnv(t *testing.T) {
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
+	t.Setenv("OTEL_SDK_DISABLED", "true")
+	t.Setenv("ENABLE_TRACING", "")
+	shutdown, err := initTelemetry(context.Background(), "frontend")
+	if err == nil {
+		t.Fatal("expected the disabled error")
+	}
+	if shutdown == nil || shutdown(context.Background()) != nil {
+		t.Error("shutdown must be a usable no-op")
+	}
 }

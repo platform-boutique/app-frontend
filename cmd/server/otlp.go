@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -21,20 +22,34 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-// otlpEndpoint resolves the OTLP/gRPC collector URL (scheme required, e.g. http://alloy:4317).
-// OTEL_EXPORTER_OTLP_ENDPOINT is the standard variable; COLLECTOR_SERVICE_ADDR (host:port) is a
-// legacy fallback. An empty result means telemetry is disabled.
-func otlpEndpoint() string {
-	if os.Getenv("ENABLE_TRACING") == "0" {
+// sdkDisabled reports OTEL_SDK_DISABLED=true (case-insensitive, as the OpenTelemetry spec says;
+// any other value, including "1", does not disable).
+func sdkDisabled(getenv func(string) string) bool {
+	return strings.EqualFold(strings.TrimSpace(getenv("OTEL_SDK_DISABLED")), "true")
+}
+
+// otlpEndpointFrom resolves the OTLP/gRPC collector URL (scheme required, e.g. http://alloy:4317).
+// The contract of every service: telemetry is on only if OTEL_EXPORTER_OTLP_ENDPOINT is set, and
+// OTEL_SDK_DISABLED=true forces it off. ENABLE_TRACING=0 stays as a legacy off switch. An empty
+// result means telemetry is disabled. (The old COLLECTOR_SERVICE_ADDR fallback is gone: it turned
+// telemetry on without the standard variable.)
+func otlpEndpointFrom(getenv func(string) string) string {
+	if sdkDisabled(getenv) || getenv("ENABLE_TRACING") == "0" {
 		return ""
 	}
-	if ep := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); ep != "" {
-		return ep
+	return strings.TrimSpace(getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+}
+
+func otlpEndpoint() string { return otlpEndpointFrom(os.Getenv) }
+
+// pyroscopeAddrFrom returns the Pyroscope server address, or "" when profiling is off. Profiling is
+// on only if PYROSCOPE_ADDR is set (there is no default address any more); ENABLE_PROFILING=0
+// stays as a legacy off switch. OTEL_SDK_DISABLED does not touch it: Pyroscope is not an OTel SDK.
+func pyroscopeAddrFrom(getenv func(string) string) string {
+	if getenv("ENABLE_PROFILING") == "0" {
+		return ""
 	}
-	if addr := os.Getenv("COLLECTOR_SERVICE_ADDR"); addr != "" {
-		return "http://" + addr
-	}
-	return ""
+	return strings.TrimSpace(getenv("PYROSCOPE_ADDR"))
 }
 
 // initTelemetry pushes traces, metrics and logs over OTLP/gRPC to the collector.

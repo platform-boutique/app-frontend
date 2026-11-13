@@ -120,12 +120,13 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 | `FRONTEND_MESSAGE` | No | — | Optional announcement bar text shown above the header on every page |
 | `ENABLE_SINGLE_SHARED_SESSION` | No | `false` | `true` makes every new visitor share one hard-coded session id (cart shared by everyone). Demo/test workaround only |
 | `TEMPLATE_PATH` | No | `templates/*.html` | Glob of HTML templates (relative to `/app`) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs** (scheme required), e.g. `http://alloy.monitoring.svc.cluster.local:4317`. Legacy fallback: `COLLECTOR_SERVICE_ADDR` (`host:port`). Telemetry is on iff an endpoint is set |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs** (scheme required), e.g. `http://alloy.monitoring.svc.cluster.local:4317`. Telemetry is on iff this is set (and `OTEL_SDK_DISABLED` is not `true`). The old `COLLECTOR_SERVICE_ADDR` fallback was removed |
+| `OTEL_SDK_DISABLED` | No | unset | `true` (case-insensitive, as in the OTel spec) forces all telemetry off even if an endpoint is set; any other value, including `1`, does nothing. Does not affect profiling or Faro |
 | `ENABLE_TRACING` | No | — | Legacy switch: `0` forces all telemetry off even if an endpoint is set (it is no longer needed to turn telemetry on) |
 | `OTEL_METRIC_EXPORT_INTERVAL` | No | `15000` | Milliseconds between metric pushes (Go also accepts durations such as `15s`) |
 | `OTEL_SERVICE_NAME` | No | `frontend` | `service.name` — becomes the Prometheus `job` and the Loki `service_name`; keep the default, dashboards depend on it |
-| `PYROSCOPE_ADDR` | No | `http://pyroscope:4040` | Profiles use the Pyroscope SDK push protocol (**not** OTLP). Point it at Alloy (`http://alloy.monitoring.svc.cluster.local:4040`), which forwards to Pyroscope, or directly at Pyroscope |
-| `ENABLE_PROFILING` | No | off | `1` starts the Pyroscope SDK |
+| `PYROSCOPE_ADDR` | No | unset (profiling off) | Profiling is on iff this is set (no default address any more). Profiles use the Pyroscope SDK push protocol (**not** OTLP). Point it at Alloy (`http://alloy.monitoring.svc.cluster.local:4040`), which forwards to Pyroscope, or directly at Pyroscope |
+| `ENABLE_PROFILING` | No | — | Legacy switch: `0` forces profiling off even if `PYROSCOPE_ADDR` is set. `1` alone no longer starts anything |
 | `FARO_COLLECTOR_URL` | No | empty (Faro off) | Grafana Faro receiver URL **as the visitor's browser reaches it**, e.g. `https://faro.example.com/collect` (Alloy `faro.receiver`). Only `http://` or `https://`, a host, no credentials; anything else stops the process at start with a message. Empty: no Faro script, config block or `traceparent` meta tag is rendered. See the README section "RUM (Grafana Faro)" |
 | `FARO_APP_NAME` | No | `everly-frontend` | Faro `app.name` (at most 128 characters) |
 | `FARO_APP_VERSION` | No | `dev` | Faro `app.version` (the service reports no build version of its own) |
@@ -389,7 +390,6 @@ It builds `frontend:faro-test`, starts `faro-test-fe` (compose network, the comp
 - Faro exports spans in batches one second after they end and the SDK does not flush them when the page is left: a page left within about a second can lose its `documentLoad` span (events and measurements are flushed). The check waits for that.
 - Sampling: a sampled-out session sends nothing and no trace header; the choice is per session at its start.
 - Ad blockers and privacy extensions can block the collector or the scripts; the shop then simply runs without RUM. The collector must allow the shop's origin by CORS and accept the `x-faro-session-id` and `Idempotency-Key` request headers.
-- `OTEL_SDK_DISABLED` is not read by the frontend (telemetry is switched by `OTEL_EXPORTER_OTLP_ENDPOINT` and `ENABLE_TRACING=0`, as before); the compose frontend sets it but only `ENABLE_TRACING=0` has an effect.
 
 **Checked:** the Go tests, `node --check static/js/faro-init.js` and `tests/faro/run.sh` against a real Chromium (headless, Playwright): all assertions in the three passes pass (the list is at the top of `tests/faro/faro-check.mjs`). **Not run:** a real Alloy `faro.receiver` or Grafana (the collector in the check is a fake that records the payloads), any browser other than Chromium, a signed-in visitor (the attribute is checked as `"false"` in the browser; `"true"` only in a Go test), a sample rate below 1 in a browser, the image on Kubernetes.
 

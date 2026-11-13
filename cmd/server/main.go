@@ -143,11 +143,11 @@ func main() {
 		}()
 	}
 
-	if os.Getenv("ENABLE_PROFILING") == "1" {
+	if addr := pyroscopeAddrFrom(os.Getenv); addr != "" {
 		log.Info("Profiling enabled.")
-		go initProfiling(log)
+		go initProfiling(log, addr)
 	} else {
-		log.Info("Profiling disabled.")
+		log.Info("Profiling disabled (PYROSCOPE_ADDR is unset).")
 	}
 
 	// --- Service wiring ---
