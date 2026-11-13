@@ -729,9 +729,42 @@ func cartSize(c []*pb.CartItem) int {
 	return cartSize
 }
 
+// currencyDecimals: minor-unit digits shown per currency. The whitelist (whitelistedCurrencies) has
+// one without a minor unit, JPY; everything else, including a code we do not know, shows two.
+var currencyDecimals = map[string]int{"JPY": 0}
+
+func decimalsOf(code string) int {
+	if d, ok := currencyDecimals[code]; ok {
+		return d
+	}
+	return 2
+}
+
+// renderMoney shows an amount rounded to the NEAREST minor unit, half up on the magnitude (the
+// nanos are carried into the units): 29.989999999 is $29.99, 0.999999999 is $1.00, 1999.5 JPY is
+// ¥2000. currency-service floors its answers to the nanosecond, so truncating (what this did
+// before) showed 29.99 as $29.98. Sums are made on exact units/nanos by the callers and rendered
+// once, so a displayed total is the rounding of the exact total, never the sum of rounded parts.
 func renderMoney(money *pb.Money) string {
-	currencyLogo := renderCurrencyLogo(money.GetCurrencyCode())
-	return fmt.Sprintf("%s%d.%02d", currencyLogo, money.GetUnits(), money.GetNanos()/10000000)
+	d := decimalsOf(money.GetCurrencyCode())
+	total := new(big.Int).Mul(big.NewInt(money.GetUnits()), big.NewInt(1_000_000_000))
+	total.Add(total, big.NewInt(int64(money.GetNanos())))
+	neg := total.Sign() < 0
+	total.Abs(total)
+	step := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(9-d)), nil) // nanos per minor unit
+	minor := new(big.Int).Add(total, new(big.Int).Rsh(step, 1))
+	minor.Quo(minor, step)
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(d)), nil)
+	whole, frac := new(big.Int).QuoRem(minor, scale, new(big.Int))
+	sign := ""
+	if neg && minor.Sign() != 0 {
+		sign = "-"
+	}
+	out := sign + renderCurrencyLogo(money.GetCurrencyCode()) + whole.String()
+	if d > 0 {
+		out += fmt.Sprintf(".%0*d", d, frac.Int64())
+	}
+	return out
 }
 
 func renderCurrencyLogo(currencyCode string) string {

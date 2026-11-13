@@ -106,7 +106,7 @@ func TestRenderMoney_EUR(t *testing.T) {
 func TestRenderMoney_JPY(t *testing.T) {
 	m := &pb.Money{CurrencyCode: "JPY", Units: 1000, Nanos: 0}
 	got := renderMoney(m)
-	want := "¥1000.00"
+	want := "¥1000"
 	if got != want {
 		t.Errorf("expected %s, got %s", want, got)
 	}
