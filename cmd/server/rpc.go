@@ -28,23 +28,6 @@ func callCtx(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, backendTimeout)
 }
 
-func (fe *frontendServer) getCurrencies(ctx context.Context) ([]string, error) {
-	ctx, cancel := callCtx(ctx)
-	defer cancel()
-	currs, err := pb.NewCurrencyServiceClient(fe.currencySvcConn).
-		GetSupportedCurrencies(ctx, &pb.Empty{})
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, c := range currs.CurrencyCodes {
-		if _, ok := whitelistedCurrencies[c]; ok {
-			out = append(out, c)
-		}
-	}
-	return out, nil
-}
-
 func (fe *frontendServer) getProduct(ctx context.Context, id string) (*pb.Product, error) {
 	ctx, cancel := callCtx(ctx)
 	defer cancel()
@@ -77,18 +60,6 @@ func (fe *frontendServer) insertCart(ctx context.Context, userID, productID stri
 			Quantity:  quantity},
 	})
 	return err
-}
-
-func (fe *frontendServer) convertCurrency(ctx context.Context, money *pb.Money, currency string) (*pb.Money, error) {
-	ctx, cancel := callCtx(ctx)
-	defer cancel()
-	if avoidNoopCurrencyConversionRPC && money.GetCurrencyCode() == currency {
-		return money, nil
-	}
-	return pb.NewCurrencyServiceClient(fe.currencySvcConn).
-		Convert(ctx, &pb.CurrencyConversionRequest{
-			From:   money,
-			ToCode: currency})
 }
 
 func (fe *frontendServer) getShippingQuote(ctx context.Context, items []*pb.CartItem, currency string) (*pb.Money, error) {

@@ -54,7 +54,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 
 | Page | Calls |
 |---|---|
-| Home | currency (list + convert per product), product-catalog (`ListCategories` + `ListProductsFiltered`, 24 per page), inventory (ONE `GetStock` with the ids of the page, 1 s deadline, failures ignored), cart (get, then product-catalog `GetProduct` per cart line for the header count), ad (100 ms deadline, failures ignored), review (ONE `GetRatingSummary` with the ids of the page, 400 ms deadline, failures ignored) |
+| Home | currency (list + convert per product, both through the in-process cache, see "Performance"), product-catalog (`ListCategories` + `ListProductsFiltered`, 24 per page), inventory (ONE `GetStock` with the ids of the page, 1 s deadline, failures ignored), cart (get, then product-catalog `GetProduct` per cart line for the header count), ad (100 ms deadline, failures ignored), review (ONE `GetRatingSummary` with the ids of the page, 400 ms deadline, failures ignored) |
 | Product | product-catalog (get), inventory (ONE `GetStock` for the product, 1 s deadline, failures ignored), currency, cart, recommendation → product-catalog (up to 4), ad, review (`ListReviews`, 5 per page, and ONE `GetRatingSummary` for the rating bars, 400 ms deadline, failures ignored) |
 | Ad click | ad (`RecordClick`, 1 s deadline, failures ignored); nothing else |
 | Post review | product-catalog (get, the product must exist), review (`AddReview`, 2 s deadline) |
@@ -249,6 +249,19 @@ Ads come from `ad-service` (`proto/demo.proto` gained `Ad.id = 3` and the `Recor
 
 The photos in `static/img/products/` (webp, 1000 px and 600 px thumbnails) come from DummyJSON (`https://cdn.dummyjson.com/product-images/...`, dataset retrieved 2026-10-27). DummyJSON itself is MIT licensed; the licence and provenance of the **images** on its CDN could not be found, so **the licence status of the product photos is UNVERIFIED** (assumed MIT, not confirmed). Brand and product names are the dataset's and are used as demo data only. Details and the selection are in `apps/product-catalog-service/data/seed/SOURCES.md` of the platform-demo repository. Do not publish this store outside a demo before the image licence is clarified.
 
+## Performance: static caching and the currency cache
+
+**Static files** (`/static/*`, `/favicon.ico`, `cmd/server/static.go`): see the `/static/*` row in "HTTP routes" (Cache-Control, ETag/Last-Modified/304, gzip for text types, no directory listing, never a `Set-Cookie`). Not done: brotli (no encoder in the standard library, so it would be a new dependency), compression of the dynamic HTML pages (left to the ingress/CDN), fingerprinted URLs (`?v=<hash>`, which would allow `immutable`), the order-line images (the order stores the full picture path at checkout; only the cart uses the thumbnail).
+
+**Currency cache** (`cmd/server/currency_cache.go`, in-process, per replica, no env switches):
+
+- `GetSupportedCurrencies` (after the whitelist): 5 minutes. `Convert`: 60 seconds, keyed by (from currency, units, nanos, to currency). Concurrent identical lookups share one RPC (singleflight, written here: `golang.org/x/sync` is not a dependency). Errors are never cached. The convert map is bounded at 4096 entries (stale entries go first, a map full of live ones is cleared). Results are copies, so a handler can not change the cache.
+- Why the service's answers are cached instead of a rate: currency-service converts through EUR in floating point and floors units and nanos separately, and its API exposes no rate. Computing locally from a derived rate could not reproduce its output exactly; caching its answers does (byte-identical `Money`, the rounding in `money/` and `renderMoney` is untouched). `avoidNoopCurrencyConversionRPC` stays `false`: USD to USD is still sent to the service (and then cached), because the service's own answer for it is not always the input (checked by running a copy of the algorithm of `currency.ts` in node over 1196 USD amounts: 596 came back one nano off, e.g. 1.00 USD to USD gives 0.999999999; skipping the call would change what is shown).
+- The fetch runs on a context that outlives the caller that started it (bounded by `backendTimeout`), so one visitor leaving does not fail the others waiting for the same answer; each caller still stops waiting when its own request ends.
+- Metric `frontend_currency_cache_total{op="supported|convert",result="hit|miss|shared"}` (`shared` = joined a call already in flight).
+- Measured with a counting fake client through the real home handler (`TestCurrencyCache_CallsPerListingPage`, sample catalog, 24 cards per page): one listing page asked for 1 supported-currencies lookup and 24 conversions (25 RPCs before the cache, every request). Now the first (cold) request makes 1 + 23 RPCs (two cards cost the same) and the following requests 0, until the 60 s TTL ends. A cold page still costs about 24 RPCs: removing that needs a batch or rate RPC in currency-service (not done, additive proto change, server first).
+- Limits: per replica (each replica warms its own cache), a rate change in currency-service shows up after at most 60 s, a cold page after a restart or a TTL still fans out.
+
 ## Container image
 
 Multi-stage [`Dockerfile`](Dockerfile):
@@ -441,6 +454,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── reviews.go       # review-service client use: rating summaries, review list, review form validation and POST handler
 │   ├── middleware.go    # request logging + session-id cookie (not for /static, /favicon.ico, probes)
 │   ├── static.go        # /static/* and /favicon.ico: cache headers, ETag/304, gzip for text types, no directory listing, no cookie
+│   ├── currency_cache.go # in-process cache for currency-service (supported list, conversions), singleflight
 │   ├── otlp.go          # OTLP/gRPC setup: trace, metric (Prometheus bridge) and log (logrus hook) providers
 │   ├── telemetry.go     # Prometheus HTTP metrics, /metrics server, route wrapping, Pyroscope
 │   └── *_test.go        # unit tests for handlers, middleware, rpc helpers and telemetry

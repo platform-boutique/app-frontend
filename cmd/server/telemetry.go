@@ -44,7 +44,7 @@ var (
 )
 
 func initMetrics() {
-	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight)
+	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight, currencyCacheTotal)
 }
 
 // metricsMiddleware wraps each route and records Prometheus HTTP metrics.

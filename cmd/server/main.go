@@ -54,6 +54,8 @@ type frontendServer struct {
 
 	currencySvcAddr string
 	currencySvcConn *grpc.ClientConn
+	currencyClient  pb.CurrencyServiceClient // nil = the client of currencySvcConn; a test double otherwise
+	currency        currencyCache
 
 	cartSvcAddr string
 	cartSvcConn *grpc.ClientConn
