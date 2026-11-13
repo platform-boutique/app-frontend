@@ -400,8 +400,8 @@ func TestFaroPage_NoTraceparentWithoutAValidSampledLocalSpan(t *testing.T) {
 }
 
 func TestFaroStaticFilesAreServed(t *testing.T) {
-	// the same handler as main: http.FileServer over ./static
-	srv := httptest.NewServer(http.StripPrefix("/static/", http.FileServer(http.Dir("../../static/"))))
+	// the same handler as main (gzip is on: the client decodes it transparently, so the hashes are of the files)
+	srv := httptest.NewServer(http.StripPrefix("/static/", newStaticServer(http.Dir("../../static/"))))
 	defer srv.Close()
 
 	pinned := map[string]string{ // sha256, also in the README

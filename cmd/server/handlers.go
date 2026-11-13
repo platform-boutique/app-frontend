@@ -42,6 +42,7 @@ func getTemplates() *template.Template {
 				"renderMoney":        renderMoney,
 				"renderCurrencyLogo": renderCurrencyLogo,
 				"cardData":           cardData,
+				"cardImage":          cardImage,
 				"ratingPct":          ratingPct,
 				"fmtRating":          fmtRating,
 				"add1":               func(i int) int { return i + 1 },

@@ -70,6 +70,11 @@ func (lh *logHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func ensureSessionID(next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// assets and probes have no session: a Set-Cookie would make them uncacheable for browsers and CDNs
+		if isStaticPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		var sessionID string
 		c, err := r.Cookie(cookieSessionID)
 		if err == http.ErrNoCookie {

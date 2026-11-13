@@ -43,7 +43,8 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/logout` | POST | Sign out: `Logout` at user-service (best effort), expire `shop_auth`, `303` to `/`. `Sec-Fetch-Site: cross-site`: `403` |
 | `/logout` | GET | Expire all cookies (including `shop_auth`, after a best-effort `Logout` call) and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
-| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`) |
+| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`). GET/HEAD only. Never sets a cookie. Every response has `Cache-Control` (`public, max-age=86400` for `img/` and `js/vendor/`, `public, max-age=300, must-revalidate` for the rest: nothing is fingerprinted, so nothing is `immutable`), `ETag` and `Last-Modified` (`304` on `If-None-Match` / `If-Modified-Since`) and `X-Content-Type-Options: nosniff`. Text types of 256 bytes or more (css, js, svg, json, html, txt, xml) are sent gzip-compressed to clients that accept it (`Vary: Accept-Encoding`, the compressed body is kept in memory, at most 64 files, and recomputed when size or mtime change; the ETag of the gzip variant ends in `-gzip`); images (webp) are never compressed. Brotli is not offered (would need a new dependency). Directories are `404` (no listing, no index) |
+| `/favicon.ico` | GET | The logo (`static/favicon.svg`, `image/svg+xml`) with the `/static/` headers and no cookie |
 | `/_healthz` | GET | Liveness/readiness (`ok`) |
 | `/robots.txt` | GET | `Disallow: /` |
 
@@ -63,7 +64,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | Emails / email detail | order (`ListOrders` / `GetOrder`, 1.5 s deadline), then mailbox (`ListOrderEmails` / `GetOrderEmail`, 1.5 s deadline) and the cached catalog category list for the header navigation |
 | Order tracking, extra | mailbox (ONE `ListOrderEmails` for the order, 1 s deadline, failures ignored) for the "View confirmation email" button |
 | Register / sign in | user (`Register` / `Login`, 5 s deadline), then order (`ClaimOrders`, 1.5 s) and cart (`GetCart`, product-catalog `GetProduct` per line, inventory ONE `GetStock` for all lines, `AddItem`, `EmptyCart`) |
-| Every request with a `shop_auth` cookie | user (`GetSession`, 1 s deadline, once per request; not for `/static`, `/_healthz`, `/robots.txt`) |
+| Every request with a `shop_auth` cookie | user (`GetSession`, 1 s deadline, once per request; not for `/static`, `/favicon.ico`, `/_healthz`, `/robots.txt`) |
 | Account | nothing of its own: the identity comes from the request |
 
 ### Errors
@@ -89,7 +90,7 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 
 | Cookie | Purpose | Flags |
 |---|---|---|
-| `shop_session-id` | random UUID per visitor; used as the cart `user_id` | `HttpOnly`, **`Secure`**, `SameSite=Strict`, 48 h |
+| `shop_session-id` | random UUID per visitor; used as the cart `user_id` | `HttpOnly`, **`Secure`**, `SameSite=Strict`, 48 h; set by pages only: never on `/static/*`, `/favicon.ico`, `/_healthz`, `/robots.txt` |
 | `shop_currency` | chosen display currency | `HttpOnly`, **`Secure`**, `SameSite=Strict`, 48 h |
 | `shop_auth` | the sign-in token (opaque, from user-service); only there when signed in; never rendered into a page and never logged | `HttpOnly`, **`Secure`**, `SameSite=Strict`, `Path=/`, `Max-Age` = what is left of the token's life (14 days at user-service's default) |
 
@@ -438,7 +439,8 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   ├── mailbox.go       # /emails and /emails/{id}: MailboxService client use, ownership guard, order-page link
 │   ├── errors.go        # gRPC status -> error page mapping, cached department nav
 │   ├── reviews.go       # review-service client use: rating summaries, review list, review form validation and POST handler
-│   ├── middleware.go    # request logging + session-id cookie
+│   ├── middleware.go    # request logging + session-id cookie (not for /static, /favicon.ico, probes)
+│   ├── static.go        # /static/* and /favicon.ico: cache headers, ETag/304, gzip for text types, no directory listing, no cookie
 │   ├── otlp.go          # OTLP/gRPC setup: trace, metric (Prometheus bridge) and log (logrus hook) providers
 │   ├── telemetry.go     # Prometheus HTTP metrics, /metrics server, route wrapping, Pyroscope
 │   └── *_test.go        # unit tests for handlers, middleware, rpc helpers and telemetry
@@ -478,7 +480,7 @@ Run: `GOTOOLCHAIN=auto go vet ./... && GOTOOLCHAIN=auto go test -race -count=1 .
 - Reviews: no spam protection, rate limiting or moderation (anyone who can load a product page can post); the review author is a free-text name, not an account.
 - Per-request gRPC calls have no retries; each has a deadline (3 s, 15 s for checkout, 100 ms for ads, see "Deadlines").
 - Live stock is only as fresh as the page: another visitor can take the last item between the page and the order. The order itself is safe (checkout reserves all or nothing and answers `422 out of stock`); the cart has no quantity editor, so a line that became too big is fixed by emptying the cart and adding again.
-- `/setCurrency` redirects to the `Referer` header as is, and `/static/` lists directories without cache headers (found by the audit, not changed).
+- `/setCurrency` redirects to the `Referer` header as is. (`/static/` directory listing and missing cache headers, found by the audit, are fixed, see the `/static/*` row.)
 
 ## Wide screens
 

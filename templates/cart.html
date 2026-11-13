@@ -41,7 +41,7 @@
                 {{ range $.items }}
                 <li class="cart-item">
                     <a class="media cart-item-media" href="{{ $.baseUrl }}/product/{{ .Item.Id }}" tabindex="-1" aria-hidden="true">
-                        <img src="{{ $.baseUrl }}{{ .Item.Picture }}" alt="" width="800" height="800">
+                        <img src="{{ $.baseUrl }}{{ cardImage .Item }}" alt="" width="600" height="600">
                     </a>
                     <div class="cart-item-body">
                         <h2 class="cart-item-name"><a href="{{ $.baseUrl }}/product/{{ .Item.Id }}">{{ .Item.Name }}</a></h2>
