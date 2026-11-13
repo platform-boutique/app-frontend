@@ -486,6 +486,10 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 
 Run: `GOTOOLCHAIN=auto go vet ./... && GOTOOLCHAIN=auto go test -race -count=1 ./...` and `golangci-lint run ./...` (v2.11.4, the repo's `.golangci.yaml`): clean. Each fix has a test that fails without it (stale cart lines, UTF-8 / long search text, status mapping and no leaks, htmx fragment shape and redirect, quantity above stock, empty ad list, hung backends, document titles, border contrast). The htmx swap (one `#catalog-results` and one `aria-live` after paging, scroll to the top of the results, title update, error message in `#page-alert`, no pushed URL on error, landing -> search loads the full page) was driven with headless Chromium (Playwright) against the real templates and static files over fake backends. Not run: `tests/e2e` (needs a live stack, only `go vet -tags e2e`), the container image of this version, a real cart-service with an old cart, axe/Lighthouse or a screen reader.
 
+## Checked for the telemetry switches, static caching and the currency cache
+
+Run (branch `feat/perf-and-otel`): `GOTOOLCHAIN=auto go vet ./...`, `GOTOOLCHAIN=auto go test -race -count=1 ./...` (all packages pass) and `golangci-lint run ./...` (v2.11.4, 0 issues). The built binary was started on the host with dummy backend addresses and `curl` showed the `/static/*` headers, the `304`, the gzip body, the `404` on `/static/` and `/static/img/products/`, and no `Set-Cookie`. **Not run:** the container image (no rebuild), a real browser (htmx partials, dark mode and the Faro scripts are covered only by the Go tests and by the unchanged files; `tests/faro/run.sh` was not re-run), the compose smoke test, a Convert against the real currency-service (the fake is a Go port of its algorithm), a load test, brotli, any CDN.
+
 ## Known limitations
 
 - `Secure` + `SameSite=Strict` cookies break carts over plain HTTP outside `localhost`.
