@@ -10,7 +10,10 @@ import (
 )
 
 const (
-	avoidNoopCurrencyConversionRPC = false
+	// A same-currency conversion is answered here, exactly. Asking the service is not harmless: it
+	// goes through EUR in floating point and floors the nanos, so 29.99 USD to USD came back as
+	// 29.989999999 for about half of the amounts.
+	avoidNoopCurrencyConversionRPC = true
 
 	// Deadlines per backend call. A hung backend must end in a 503 page well before the
 	// server's 30 s WriteTimeout drops the connection without an answer. Not configurable

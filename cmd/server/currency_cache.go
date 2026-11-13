@@ -169,8 +169,8 @@ func (fe *frontendServer) getCurrencies(ctx context.Context) ([]string, error) {
 }
 
 func (fe *frontendServer) convertCurrency(ctx context.Context, money *pb.Money, currency string) (*pb.Money, error) {
-	if avoidNoopCurrencyConversionRPC && money.GetCurrencyCode() == currency {
-		return money, nil
+	if avoidNoopCurrencyConversionRPC && money != nil && money.GetCurrencyCode() == currency {
+		return &pb.Money{CurrencyCode: currency, Units: money.GetUnits(), Nanos: money.GetNanos()}, nil // exact, no RPC
 	}
 	if money == nil {
 		// not cacheable (no key): let the service say what it thinks of it

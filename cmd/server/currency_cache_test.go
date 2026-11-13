@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -114,6 +117,9 @@ func TestCurrencyCache_ConvertIsIdenticalToTheService(t *testing.T) {
 	ctx := context.Background()
 	for _, m := range []*pb.Money{usd(12, 990000000), usd(0, 10000000), usd(1999, 0), usd(5, 5), {CurrencyCode: "EUR", Units: 7, Nanos: 333333333}} {
 		for _, to := range []string{"USD", "EUR", "JPY", "GBP", "TRY"} {
+			if to == m.GetCurrencyCode() {
+				continue // answered locally and exactly, see TestConvertCurrency_SameCurrencyIsExactAndFree
+			}
 			want, err := cur.Convert(ctx, &pb.CurrencyConversionRequest{From: m, ToCode: to})
 			if err != nil {
 				t.Fatal(err)
@@ -181,7 +187,7 @@ func TestCurrencyCache_KeyIncludesEverything(t *testing.T) {
 		to string
 	}{
 		{usd(10, 0), "EUR"}, {usd(10, 1), "EUR"}, {usd(11, 0), "EUR"}, {usd(10, 0), "GBP"},
-		{&pb.Money{CurrencyCode: "EUR", Units: 10}, "EUR"},
+		{&pb.Money{CurrencyCode: "EUR", Units: 10}, "GBP"},
 	} {
 		if _, err := fe.convertCurrency(ctx, c.m, c.to); err != nil {
 			t.Fatal(err)
@@ -432,13 +438,29 @@ func lookups(op string) int64 {
 	return int64(n)
 }
 
+// serveIn is serve() with the visitor's currency cookie set (USD is answered locally, only another
+// currency reaches currency-service).
+func serveIn(fe *frontendServer, target string, htmx bool, currency string) *httptest.ResponseRecorder {
+	r := mux.NewRouter()
+	r.HandleFunc("/", fe.homeHandler)
+	r.HandleFunc("/product/{id}", fe.productHandler)
+	req := requestWithContext(http.MethodGet, target, "")
+	req.AddCookie(&http.Cookie{Name: cookieCurrency, Value: currency})
+	if htmx {
+		req.Header.Set("HX-Request", "true")
+	}
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	return rr
+}
+
 func TestCurrencyCache_CallsPerListingPage(t *testing.T) {
 	fe, cur, _ := pageFrontend(t)
 	type row struct{ lookS, lookC, rpcS, rpcC int64 }
 	var rows []row
 	var l0s, l0c, r0s, r0c = lookups("supported"), lookups("convert"), int64(0), int64(0)
 	for _, target := range []string{"/", "/", "/?page=1&sort=name"} {
-		if rr := serve(fe, target, false); rr.Code != 200 {
+		if rr := serveIn(fe, target, false, "EUR"); rr.Code != 200 {
 			t.Fatalf("%s: %d", target, rr.Code)
 		}
 		ls, lc, rs, rc := lookups("supported"), lookups("convert"), cur.supportedCalls.Load(), cur.convertCalls.Load()
@@ -467,21 +489,21 @@ func TestCurrencyCache_CallsPerListingPage(t *testing.T) {
 
 func TestCurrencyCache_CallsPerPage_ProductAndFragment(t *testing.T) {
 	fe, cur, clk := pageFrontend(t)
-	if rr := serve(fe, "/product/pan-05", false); rr.Code != 200 {
+	if rr := serveIn(fe, "/product/pan-05", false, "EUR"); rr.Code != 200 {
 		t.Fatalf("product: %d", rr.Code)
 	}
 	if s, c := cur.supportedCalls.Load(), cur.convertCalls.Load(); s != 1 || c < 1 {
 		t.Errorf("first product page: %d supported, %d convert", s, c)
 	}
 	s0, c0 := cur.supportedCalls.Load(), cur.convertCalls.Load()
-	serve(fe, "/product/pan-05", false)
+	serveIn(fe, "/product/pan-05", false, "EUR")
 	if cur.supportedCalls.Load() != s0 || cur.convertCalls.Load() != c0 {
 		t.Errorf("second view of the same product made calls: %d/%d -> %d/%d", s0, c0, cur.supportedCalls.Load(), cur.convertCalls.Load())
 	}
 	// an htmx paging request needs prices but not the currency list
-	serve(fe, "/", false)
+	serveIn(fe, "/", false, "EUR")
 	s1, c1 := cur.supportedCalls.Load(), cur.convertCalls.Load()
-	serve(fe, "/?page=2", true)
+	serveIn(fe, "/?page=2", true, "EUR")
 	if cur.supportedCalls.Load() != s1 {
 		t.Error("an htmx fragment fetched the supported currencies")
 	}
@@ -493,8 +515,34 @@ func TestCurrencyCache_CallsPerPage_ProductAndFragment(t *testing.T) {
 	// after the TTL the prices are fetched again
 	clk.Advance(conversionTTL + time.Second)
 	c2 := cur.convertCalls.Load()
-	serve(fe, "/", false)
+	serveIn(fe, "/", false, "EUR")
 	if got := cur.convertCalls.Load() - c2; got != catalogPageSize-1 {
 		t.Errorf("after the TTL: %d convert calls, want %d", got, catalogPageSize-1)
+	}
+}
+
+func TestConvertCurrency_SameCurrencyIsExactAndFree(t *testing.T) {
+	cur := &countingCurrency{}
+	fe, _ := newCachedFrontend(cur)
+	for _, m := range []*pb.Money{usd(29, 990000000), usd(1, 0), usd(1999, 0), usd(0, 10000000), usd(599, 990000000)} {
+		got, err := fe.convertCurrency(context.Background(), m, "USD")
+		if err != nil || got.GetUnits() != m.GetUnits() || got.GetNanos() != m.GetNanos() || got.GetCurrencyCode() != "USD" {
+			t.Errorf("%v -> USD: %v, %v", m, got, err)
+		}
+		if got == m {
+			t.Error("the same pointer was returned: callers could change the catalogue's product")
+		}
+	}
+	if n := cur.convertCalls.Load(); n != 0 {
+		t.Errorf("%d RPCs for same-currency conversions", n)
+	}
+	// the service itself would have been one nano off for these (the reason for the shortcut)
+	off, _ := cur.Convert(context.Background(), &pb.CurrencyConversionRequest{From: usd(1999, 0), ToCode: "USD"})
+	if off.GetUnits() != 1998 || off.GetNanos() != 999999999 {
+		t.Errorf("fake no longer mimics the service: %v", off)
+	}
+	// nil stays the service's problem
+	if _, err := fe.convertCurrency(context.Background(), nil, "USD"); err == nil {
+		t.Error("nil money must be refused")
 	}
 }
