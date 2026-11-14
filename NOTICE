@@ -1,0 +1,21 @@
+frontend (Everly store web UI)
+The source code is licensed under the Apache License 2.0 (see LICENSE).
+
+The Apache License 2.0 does NOT cover the product photos described below.
+
+Product images (licence NOT VERIFIED)
+-------------------------------------
+The 304 product photos in static/img/products/ (webp: a 1000 px image and a 600 px thumbnail per picture) were downloaded
+on 2026-10-27 from the DummyJSON image CDN (https://cdn.dummyjson.com/product-images/..., service: https://dummyjson.com,
+project: https://github.com/Ovi/DummyJSON by Muhammad Ovi). The DummyJSON software repository is MIT licensed. A licence or
+a statement of provenance for the IMAGES on that CDN could not be found, so their licence is not verified. They are
+assumed, not confirmed, to be covered by that MIT licence. The images and the product data are used as demo data only.
+
+Brand and product names in the demo data (for example watches, shoes, bags) belong to their respective owners and are
+shown only as sample data; no affiliation or endorsement is implied.
+
+If you are a rights holder and want an image removed, open an issue in this repository.
+Do not reuse the images outside this demo before their licence has been clarified.
+
+The dataset selection and its sources are described in apps/product-catalog-service/data/seed/SOURCES.md of the
+platform-demo repository (product-catalog-service).

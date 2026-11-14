@@ -253,7 +253,7 @@ Ads come from `ad-service` (`proto/demo.proto` gained `Ad.id = 3` and the `Recor
 
 ## Product images
 
-The photos in `static/img/products/` (webp, 1000 px and 600 px thumbnails) come from DummyJSON (`https://cdn.dummyjson.com/product-images/...`, dataset retrieved 2026-10-27). DummyJSON itself is MIT licensed; the licence and provenance of the **images** on its CDN could not be found, so **the licence status of the product photos is UNVERIFIED** (assumed MIT, not confirmed). Brand and product names are the dataset's and are used as demo data only. Details and the selection are in `apps/product-catalog-service/data/seed/SOURCES.md` of the platform-demo repository. Do not publish this store outside a demo before the image licence is clarified.
+The photos in `static/img/products/` (webp, 1000 px and 600 px thumbnails) come from DummyJSON (`https://cdn.dummyjson.com/product-images/...`, dataset retrieved 2026-10-27). DummyJSON itself is MIT licensed; the licence and provenance of the **images** on its CDN could not be found, so **the licence status of the product photos is UNVERIFIED** (assumed MIT, not confirmed). Brand and product names are the dataset's and are used as demo data only. Details and the selection are in `apps/product-catalog-service/data/seed/SOURCES.md` of the platform-demo repository. Do not publish this store outside a demo before the image licence is clarified. The attribution notice is in [`NOTICE`](NOTICE) (it says "licence not verified" and does not claim a licence for the images); the source code is Apache-2.0 (`LICENSE`).
 
 ## Performance: static caching and the currency cache
 
