@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"unicode/utf8"
 
@@ -32,11 +33,13 @@ type fakeCatalog struct {
 	products  []*pb.Product
 	cats      []*pb.Category
 	lastReq   *pb.ListProductsRequest
-	listErr   error // ListCategories fails with this
-	filterErr error // ListProductsFiltered fails with this
+	listErr   error        // ListCategories fails with this
+	filterErr error        // ListProductsFiltered fails with this
+	listCalls atomic.Int32 // ListCategories calls that reached the server
 }
 
 func (f *fakeCatalog) ListCategories(context.Context, *pb.Empty) (*pb.ListCategoriesResponse, error) {
+	f.listCalls.Add(1)
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
