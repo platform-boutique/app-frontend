@@ -34,6 +34,7 @@ func TestPlaceOrderPassesValidation(t *testing.T) {
 		ccCVV         int64
 	}{
 		{"valid", "test@example.com", "12345 example street", 10004, "New York", "New York", "United States", "5272940000751666", 4, 2024, 584},
+		{"no state outside the United States", "test@example.com", "1 Hauptstrasse", 10115, "Berlin", "", "Germany", "5272940000751666", 4, 2024, 584},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -26,7 +26,7 @@ import (
 
 var (
 	frontendMessage = strings.TrimSpace(os.Getenv("FRONTEND_MESSAGE"))
-	isCymbalBrand   = strings.ToLower(os.Getenv("CYMBAL_BRANDING")) == "true"
+	brand           = brandFromEnv()
 	tmpl            *template.Template
 	tmplOnce        sync.Once
 )
@@ -41,6 +41,13 @@ func getTemplates() *template.Template {
 			Funcs(template.FuncMap{
 				"renderMoney":        renderMoney,
 				"renderCurrencyLogo": renderCurrencyLogo,
+				"cardData":           cardData,
+				"cardImage":          cardImage,
+				"ratingPct":          ratingPct,
+				"fmtRating":          fmtRating,
+				"add1":               func(i int) int { return i + 1 },
+				"ratingChoices":      func() []int { return []int{1, 2, 3, 4, 5} },
+				"adHref":             adHref,
 			}).ParseGlob(path))
 	})
 	return tmpl
@@ -48,41 +55,58 @@ func getTemplates() *template.Template {
 
 func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
-	log.WithField("currency", currentCurrency(r)).Info("home")
+	params := parseBrowseParams(r)
+	fragment := isFragmentRequest(r)
+	log.WithField("currency", currentCurrency(r)).WithField("category", params.Category).
+		WithField("page", params.Page).WithField("fragment", fragment).Info("home")
 
-	// fetch currencies, products, and cart in parallel
+	// categories, currencies and cart in parallel; the fragment needs neither currencies nor cart
 	var (
 		currencies []string
-		products   []*pb.Product
+		cats       []*pb.Category
 		cart       []*pb.CartItem
 		currErr    error
-		prodErr    error
+		catErr     error
 		cartErr    error
 	)
 	var wg sync.WaitGroup
-	wg.Add(3)
-	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
-	go func() { defer wg.Done(); products, prodErr = fe.getProducts(r.Context()) }()
-	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); cats, catErr = fe.listCategories(r.Context()) }()
+	if !fragment {
+		wg.Add(2)
+		go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
+		go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), cartKey(r)) }()
+	}
 	wg.Wait()
 
-	if currErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
-		return
+	if catErr != nil {
+		log.WithField("error", catErr).Warn("failed to list categories")
 	}
-	if prodErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(prodErr, "could not retrieve products"), http.StatusInternalServerError)
+	if currErr != nil {
+		fe.renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
 		return
 	}
 	if cartErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(cartErr, "could not retrieve cart"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(cartErr, "could not retrieve cart"), http.StatusInternalServerError)
 		return
 	}
 
-	type productView struct {
-		Item  *pb.Product
-		Price *pb.Money
+	products, total, err := fe.browse(r.Context(), &params, cats)
+	if err != nil {
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve products"), http.StatusInternalServerError)
+		return
 	}
+
+	// ratings of the whole page in one call, in parallel with the price conversions
+	ids := make([]string, len(products))
+	for i, p := range products {
+		ids[i] = p.GetId()
+	}
+	var ratings map[string]ratingView
+	var stock liveStock
+	wg.Add(2)
+	go func() { defer wg.Done(); ratings = fe.getRatingSummaries(r.Context(), log, ids) }()
+	go func() { defer wg.Done(); stock = fe.overlayStock(r.Context(), log, products...) }()
 
 	// convert all product prices in parallel
 	type priceResult struct {
@@ -100,23 +124,44 @@ func (fe *frontendServer) homeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	wg.Wait()
 
-	ps := make([]productView, len(products))
+	ps := make([]productCard, len(products))
 	for i, p := range products {
 		if prices[i].err != nil {
-			renderHTTPError(log, r, w, errors.Wrapf(prices[i].err, "failed to do currency conversion for product %s", p.GetId()), http.StatusInternalServerError)
+			fe.renderHTTPError(log, r, w, errors.Wrapf(prices[i].err, "failed to do currency conversion for product %s", p.GetId()), http.StatusInternalServerError)
 			return
 		}
-		ps[i] = productView{p, prices[i].price}
+		ps[i] = productCard{Item: p, Price: prices[i].price, Image: cardImage(p), DeptName: deptName(cats, p.GetDepartment()), Stock: stock.info(p)}
+		if rv, ok := ratings[p.GetId()]; ok {
+			ps[i].Rating = &rv
+		}
 	}
 
-	if err := getTemplates().ExecuteTemplate(w, "home", injectCommonTemplateData(r, map[string]interface{}{
+	data := map[string]interface{}{
 		"show_currency": true,
 		"currencies":    currencies,
 		"products":      ps,
-		"cart_size":     cartSize(cart),
-		"banner_color":  os.Getenv("BANNER_COLOR"),
-		"ad":            fe.chooseAd(r.Context(), []string{}, log),
-	})); err != nil {
+		"total":         total,
+		"categories":    cats,
+		"browse":        params,
+		"category":      findCategory(cats, params.Category),
+		"sort_options":  sortOptions,
+		"pagination":    buildPagination(params, total),
+		"cart_size":     fe.headerCartSize(r.Context(), log, cart),
+	}
+	data["title"] = params.pageTitle(findCategory(cats, params.Category))
+	name := "home"
+	if fragment {
+		name = "catalog_fragment"
+		w.Header().Set("Vary", "HX-Request")
+		// the view changed more than the results (hero, heading, breadcrumbs): load the full page
+		if cur, ok := currentBrowseParams(r); ok && !params.sameLayout(cur) {
+			w.Header().Set("HX-Redirect", params.url(params.Page))
+			return
+		}
+	} else {
+		data["ad"] = fe.chooseAd(r.Context(), adContextKeys(params), log)
+	}
+	if err := getTemplates().ExecuteTemplate(w, name, injectCommonTemplateData(r, data)); err != nil {
 		log.Error(err)
 	}
 }
@@ -125,9 +170,21 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	id := mux.Vars(r)["id"]
 	if id == "" {
-		renderHTTPError(log, r, w, errors.New("product id not specified"), http.StatusBadRequest)
+		fe.renderHTTPError(log, r, w, errors.New("product id not specified"), http.StatusBadRequest)
 		return
 	}
+	// htmx "load more" of the reviews: only the next items, not the whole page
+	if isFragmentRequest(r) && r.URL.Query().Has("rpage") {
+		fe.reviewsFragment(w, r, id)
+		return
+	}
+	fe.renderProduct(w, r, id, nil, http.StatusOK)
+}
+
+// renderProduct renders the product page. form is the review form to show with its
+// errors after a rejected post (nil = empty form); code is the HTTP status.
+func (fe *frontendServer) renderProduct(w http.ResponseWriter, r *http.Request, id string, form *reviewForm, code int) {
+	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.WithField("id", id).WithField("currency", currentCurrency(r)).Debug("serving product page")
 
 	// fetch product, currencies, and cart in parallel
@@ -135,27 +192,29 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 		p          *pb.Product
 		currencies []string
 		cart       []*pb.CartItem
+		reviews    reviewsSection
 		prodErr    error
 		currErr    error
 		cartErr    error
 	)
 	var wg sync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
+	go func() { defer wg.Done(); reviews = fe.loadReviews(r.Context(), log, id, reviewPageParam(r), true) }()
 	go func() { defer wg.Done(); p, prodErr = fe.getProduct(r.Context(), id) }()
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
-	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), cartKey(r)) }()
 	wg.Wait()
 
 	if prodErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(prodErr, "could not retrieve product"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(prodErr, "could not retrieve product"), http.StatusInternalServerError)
 		return
 	}
 	if currErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
 		return
 	}
 	if cartErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(cartErr, "could not retrieve cart"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(cartErr, "could not retrieve cart"), http.StatusInternalServerError)
 		return
 	}
 
@@ -163,9 +222,19 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 	var (
 		price           *pb.Money
 		recommendations []*pb.Product
+		cats            []*pb.Category
 		priceErr        error
 	)
-	wg.Add(2)
+	var stock liveStock
+	wg.Add(4)
+	go func() { defer wg.Done(); stock = fe.overlayStock(r.Context(), log, p) }()
+	go func() {
+		defer wg.Done()
+		var err error
+		if cats, err = fe.listCategories(r.Context()); err != nil {
+			log.WithField("error", err).Warn("failed to list categories")
+		}
+	}()
 	go func() {
 		defer wg.Done()
 		price, priceErr = fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))
@@ -173,7 +242,7 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 	go func() {
 		defer wg.Done()
 		var err error
-		recommendations, err = fe.getRecommendations(r.Context(), sessionID(r), []string{id})
+		recommendations, err = fe.getRecommendations(r.Context(), cartKey(r), []string{id})
 		if err != nil {
 			log.WithField("error", err).Warn("failed to get product recommendations")
 		}
@@ -181,22 +250,29 @@ func (fe *frontendServer) productHandler(w http.ResponseWriter, r *http.Request)
 	wg.Wait()
 
 	if priceErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(priceErr, "failed to convert currency"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(priceErr, "failed to convert currency"), http.StatusInternalServerError)
 		return
 	}
 
-	product := struct {
-		Item  *pb.Product
-		Price *pb.Money
-	}{p, price}
+	product := productPage{Item: p, Price: price, Images: productImages(p), Category: findCategory(cats, p.GetDepartment()), Stock: stock.info(p), Quantities: quantityOptions(stock.of(p))}
+	if form != nil {
+		reviews.Form = *form
+	}
+	reviews.Posted = r.URL.Query().Get("reviewed") == "1"
 
+	if code != http.StatusOK {
+		w.WriteHeader(code)
+	}
 	if err := getTemplates().ExecuteTemplate(w, "product", injectCommonTemplateData(r, map[string]interface{}{
+		"title":           p.GetName(),
 		"ad":              fe.chooseAd(r.Context(), p.Categories, log),
 		"show_currency":   true,
 		"currencies":      currencies,
 		"product":         product,
+		"categories":      cats,
 		"recommendations": recommendations,
-		"cart_size":       cartSize(cart),
+		"reviews":         reviews,
+		"cart_size":       fe.headerCartSize(r.Context(), log, cart),
 	})); err != nil {
 		log.Println(err)
 	}
@@ -211,22 +287,47 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 		ProductID: productID,
 	}
 	if err := payload.Validate(); err != nil {
-		renderHTTPError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
+		fe.renderHTTPError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
 		return
 	}
 	log.WithField("product", payload.ProductID).WithField("quantity", payload.Quantity).Debug("adding to cart")
 
 	p, err := fe.getProduct(r.Context(), payload.ProductID)
 	if err != nil {
-		renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve product"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve product"), http.StatusInternalServerError)
 		return
 	}
 	if payload.Quantity > math.MaxInt32 {
-		renderHTTPError(log, r, w, errors.New("quantity exceeds maximum allowed value"), http.StatusBadRequest)
+		fe.renderHTTPError(log, r, w, errors.New("quantity exceeds maximum allowed value"), http.StatusBadRequest)
 		return
 	}
-	if err := fe.insertCart(r.Context(), sessionID(r), p.GetId(), int32(payload.Quantity)); err != nil { // #nosec G115 -- bounds checked above
-		renderHTTPError(log, r, w, errors.Wrap(err, "failed to add to cart"), http.StatusInternalServerError)
+	// one cart can not hold more than is free right now: the live stock when inventory-service answers, else the catalogue's
+	stock := fe.overlayStock(r.Context(), log, p).of(p)
+	if stock <= 0 {
+		fe.renderHTTPError(log, r, w, errors.Errorf("%s is out of stock.", p.GetName()), http.StatusUnprocessableEntity)
+		return
+	}
+	cart, err := fe.getCart(r.Context(), cartKey(r))
+	if err != nil {
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "could not retrieve cart"), http.StatusInternalServerError)
+		return
+	}
+	inCart := int64(0)
+	for _, item := range cart {
+		if item.GetProductId() == p.GetId() {
+			inCart += int64(item.GetQuantity())
+		}
+	}
+	if inCart+int64(payload.Quantity) > int64(stock) {
+		msg := errors.Errorf("Only %d of %s in stock.", stock, p.GetName())
+		if inCart > 0 {
+			msg = errors.Errorf("Only %d of %s in stock, and %d already in your cart.", stock, p.GetName(), inCart)
+		}
+		fe.renderHTTPError(log, r, w, msg, http.StatusUnprocessableEntity)
+		return
+	}
+	if err := fe.insertCart(r.Context(), cartKey(r), p.GetId(), int32(payload.Quantity)); err != nil { // #nosec G115 -- bounds checked above
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "failed to add to cart"), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("location", baseUrl+"/cart")
@@ -236,8 +337,8 @@ func (fe *frontendServer) addToCartHandler(w http.ResponseWriter, r *http.Reques
 func (fe *frontendServer) emptyCartHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("emptying cart")
-	if err := fe.emptyCart(r.Context(), sessionID(r)); err != nil {
-		renderHTTPError(log, r, w, errors.Wrap(err, "failed to empty cart"), http.StatusInternalServerError)
+	if err := fe.emptyCart(r.Context(), cartKey(r)); err != nil {
+		fe.renderHTTPError(log, r, w, errors.Wrap(err, "failed to empty cart"), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("location", baseUrl+"/")
@@ -247,6 +348,8 @@ func (fe *frontendServer) emptyCartHandler(w http.ResponseWriter, r *http.Reques
 func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("view user cart")
+	// the page holds the checkout form and its idempotency key: Back must not restore an old form (and its spent key)
+	w.Header().Set("Cache-Control", "no-store")
 
 	// fetch currencies and cart in parallel
 	var (
@@ -258,41 +361,67 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
-	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), sessionID(r)) }()
+	go func() { defer wg.Done(); cart, cartErr = fe.getCart(r.Context(), cartKey(r)) }()
 	wg.Wait()
 
 	if currErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
 		return
 	}
 	if cartErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(cartErr, "could not retrieve cart"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(cartErr, "could not retrieve cart"), http.StatusInternalServerError)
 		return
 	}
 
-	// recommendations and shipping quote are independent, run in parallel
+	// products of the cart lines; lines whose product left the catalog are skipped
+	lines, stale, err := fe.liveCartLines(r.Context(), log, cart)
+	if err != nil {
+		fe.renderHTTPError(log, r, w, err, http.StatusInternalServerError)
+		return
+	}
+	liveCart := linesItems(lines)
+
+	// recommendations, shipping quote and price conversions are independent, run in parallel
 	var (
 		recommendations []*pb.Product
 		shippingCost    *pb.Money
 		shippingErr     error
 	)
-	wg.Add(2)
+	prices := make([]*pb.Money, len(lines))
+	priceErrs := make([]error, len(lines))
+	var stock liveStock
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		products := make([]*pb.Product, len(lines))
+		for i, l := range lines {
+			products[i] = l.Item
+		}
+		stock = fe.overlayStock(r.Context(), log, products...)
+	}()
 	go func() {
 		defer wg.Done()
 		var err error
-		recommendations, err = fe.getRecommendations(r.Context(), sessionID(r), cartIDs(cart))
+		recommendations, err = fe.getRecommendations(r.Context(), cartKey(r), cartIDs(liveCart))
 		if err != nil {
 			log.WithField("error", err).Warn("failed to get product recommendations")
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		shippingCost, shippingErr = fe.getShippingQuote(r.Context(), cart, currentCurrency(r))
+		shippingCost, shippingErr = fe.getShippingQuote(r.Context(), liveCart, currentCurrency(r))
 	}()
+	for i, l := range lines {
+		wg.Add(1)
+		go func(i int, p *pb.Product) {
+			defer wg.Done()
+			prices[i], priceErrs[i] = fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))
+		}(i, l.Item)
+	}
 	wg.Wait()
 
 	if shippingErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(shippingErr, "failed to get shipping quote"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(shippingErr, "failed to get shipping quote"), http.StatusInternalServerError)
 		return
 	}
 
@@ -300,43 +429,21 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 		Item     *pb.Product
 		Quantity int32
 		Price    *pb.Money
+		Left     int32 // free stock of the product (live when inventory-service answers)
+		Short    bool  // the line holds more than is left: checkout would refuse it
+		Low      bool  // 1..lowStockLimit left, the line still fits
 	}
-
-	// fetch all products and convert currencies in parallel
-	type itemResult struct {
-		product *pb.Product
-		price   *pb.Money
-		err     error
-	}
-	itemResults := make([]itemResult, len(cart))
-	for i, item := range cart {
-		wg.Add(1)
-		go func(i int, item *pb.CartItem) {
-			defer wg.Done()
-			p, err := fe.getProduct(r.Context(), item.GetProductId())
-			if err != nil {
-				itemResults[i] = itemResult{err: errors.Wrapf(err, "could not retrieve product #%s", item.GetProductId())}
-				return
-			}
-			price, err := fe.convertCurrency(r.Context(), p.GetPriceUsd(), currentCurrency(r))
-			if err != nil {
-				itemResults[i] = itemResult{err: errors.Wrapf(err, "could not convert currency for product #%s", item.GetProductId())}
-				return
-			}
-			itemResults[i] = itemResult{product: p, price: price}
-		}(i, item)
-	}
-	wg.Wait()
-
-	items := make([]cartItemView, len(cart))
+	items := make([]cartItemView, len(lines))
 	totalPrice := &pb.Money{CurrencyCode: currentCurrency(r)}
-	for i, res := range itemResults {
-		if res.err != nil {
-			renderHTTPError(log, r, w, res.err, http.StatusInternalServerError)
+	for i, l := range lines {
+		if priceErrs[i] != nil {
+			fe.renderHTTPError(log, r, w, errors.Wrapf(priceErrs[i], "could not convert currency for product #%s", l.Item.GetId()), http.StatusInternalServerError)
 			return
 		}
-		multPrice := money.MultiplySlow(res.price, uint32(cart[i].GetQuantity())) // #nosec G115 -- quantity is a non-negative proto int32
-		items[i] = cartItemView{Item: res.product, Quantity: cart[i].GetQuantity(), Price: multPrice}
+		multPrice := money.MultiplySlow(prices[i], uint32(l.Quantity)) // #nosec G115 -- quantity is a non-negative proto int32
+		left := stock.of(l.Item)
+		items[i] = cartItemView{Item: l.Item, Quantity: l.Quantity, Price: multPrice, Left: left,
+			Short: l.Quantity > left, Low: l.Quantity <= left && left <= lowStockLimit}
 		totalPrice = money.Must(money.Sum(totalPrice, multPrice))
 	}
 	totalPrice = money.Must(money.Sum(totalPrice, shippingCost))
@@ -345,12 +452,18 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 	if err := getTemplates().ExecuteTemplate(w, "cart", injectCommonTemplateData(r, map[string]interface{}{
 		"currencies":       currencies,
 		"recommendations":  recommendations,
-		"cart_size":        cartSize(cart),
+		"cart_size":        linesSize(lines),
+		"title":            "Cart",
+		"stale_items":      stale,
+		"categories":       fe.navCategories(r.Context()),
 		"shipping_cost":    shippingCost,
 		"show_currency":    true,
 		"total_cost":       totalPrice,
 		"items":            items,
 		"expiration_years": []int{year, year + 1, year + 2, year + 3, year + 4},
+		"idempotency_key":  newIdempotencyKey(),
+		"countries":        checkoutCountries,
+		"us_country":       usCountry,
 	})); err != nil {
 		log.Println(err)
 	}
@@ -359,6 +472,9 @@ func (fe *frontendServer) viewCartHandler(w http.ResponseWriter, r *http.Request
 func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("placing order")
+	if fe.identityUnavailable(log, r, w) {
+		return // a signed-in visitor whose cart we cannot reach must not end up ordering as a guest
+	}
 
 	var (
 		email         = r.FormValue("email")
@@ -373,6 +489,19 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 		ccCVV, _      = strconv.ParseInt(r.FormValue("credit_card_cvv"), 10, 32)
 	)
 
+	// the form only asks for a state in the United States: normalise the spelling, and drop a state posted for any other country
+	if isUS(country) {
+		country = usCountry
+	} else {
+		state = ""
+	}
+
+	idemKey := strings.TrimSpace(r.FormValue("idempotency_key"))
+	if !validIdempotencyKey(idemKey) {
+		fe.renderCheckoutError(log, r, w, errors.New("The checkout form is out of date. Please open your cart again and place the order from there."), http.StatusUnprocessableEntity)
+		return
+	}
+
 	payload := validator.PlaceOrderPayload{
 		Email:         email,
 		StreetAddress: streetAddress,
@@ -386,12 +515,14 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 		CcCVV:         ccCVV,
 	}
 	if err := payload.Validate(); err != nil {
-		renderHTTPError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
+		fe.renderCheckoutError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
 		return
 	}
 
+	orderCtx, cancelOrder := context.WithTimeout(r.Context(), checkoutTimeout)
+	defer cancelOrder()
 	order, err := pb.NewCheckoutServiceClient(fe.checkoutSvcConn).
-		PlaceOrder(r.Context(), &pb.PlaceOrderRequest{
+		PlaceOrder(orderCtx, &pb.PlaceOrderRequest{
 			Email: payload.Email,
 			CreditCard: &pb.CreditCardInfo{
 				CreditCardNumber:          payload.CcNumber,
@@ -399,8 +530,10 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 				CreditCardExpirationYear:  int32(payload.CcYear),  // #nosec G115 -- parsed with ParseInt bitSize 32, fits in int32
 				CreditCardCvv:             int32(payload.CcCVV),   // #nosec G115 -- parsed with ParseInt bitSize 32, fits in int32
 			},
-			UserId:       sessionID(r),
-			UserCurrency: currentCurrency(r),
+			UserId:         cartKey(r),
+			AccountId:      accountID(r),
+			IdempotencyKey: idemKey,
+			UserCurrency:   currentCurrency(r),
 			Address: &pb.Address{
 				StreetAddress: payload.StreetAddress,
 				City:          payload.City,
@@ -410,7 +543,7 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 			},
 		})
 	if err != nil {
-		renderHTTPError(log, r, w, errors.Wrap(err, "failed to complete the order"), http.StatusInternalServerError)
+		fe.renderCheckoutError(log, r, w, errors.Wrap(err, "failed to complete the order"), http.StatusInternalServerError)
 		return
 	}
 	log.WithField("order", order.GetOrder().GetOrderId()).Info("order placed")
@@ -423,12 +556,12 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 	)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); recommendations, _ = fe.getRecommendations(r.Context(), sessionID(r), nil) }()
+	go func() { defer wg.Done(); recommendations, _ = fe.getRecommendations(r.Context(), cartKey(r), nil) }()
 	go func() { defer wg.Done(); currencies, currErr = fe.getCurrencies(r.Context()) }()
 	wg.Wait()
 
 	if currErr != nil {
-		renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
+		fe.renderHTTPError(log, r, w, errors.Wrap(currErr, "could not retrieve currencies"), http.StatusInternalServerError)
 		return
 	}
 
@@ -439,8 +572,10 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := getTemplates().ExecuteTemplate(w, "order", injectCommonTemplateData(r, map[string]interface{}{
+		"title":           "Order complete",
 		"show_currency":   false,
 		"currencies":      currencies,
+		"categories":      fe.navCategories(r.Context()),
 		"order":           order.GetOrder(),
 		"total_paid":      &totalPaid,
 		"recommendations": recommendations,
@@ -452,7 +587,14 @@ func (fe *frontendServer) placeOrderHandler(w http.ResponseWriter, r *http.Reque
 func (fe *frontendServer) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	log := r.Context().Value(ctxKeyLog{}).(logrus.FieldLogger)
 	log.Debug("logging out")
+	if token := authToken(r); token != "" {
+		fe.revokeToken(r.Context(), log, token)
+		expireAuthCookie(w)
+	}
 	for _, c := range r.Cookies() {
+		if c.Name == cookieAuth {
+			continue // expired above, with its own flags
+		}
 		c.Expires = time.Now().Add(-time.Hour * 24 * 365)
 		c.MaxAge = -1
 		http.SetCookie(w, c)
@@ -484,7 +626,7 @@ func (fe *frontendServer) setCurrencyHandler(w http.ResponseWriter, r *http.Requ
 	cur := r.FormValue("currency_code")
 	payload := validator.SetCurrencyPayload{Currency: cur}
 	if err := payload.Validate(); err != nil {
-		renderHTTPError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
+		fe.renderHTTPError(log, r, w, validator.ValidationErrorResponse(err), http.StatusUnprocessableEntity)
 		return
 	}
 	log.WithField("curr.new", payload.Currency).WithField("curr.old", currentCurrency(r)).Debug("setting currency")
@@ -512,6 +654,9 @@ func (fe *frontendServer) chooseAd(ctx context.Context, ctxKeys []string, log lo
 		log.WithField("error", err).Warn("failed to retrieve ads")
 		return nil
 	}
+	if len(ads) == 0 {
+		return nil
+	}
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(len(ads))))
 	if err != nil {
 		log.WithField("error", err).Warn("failed to generate random ad index")
@@ -520,29 +665,24 @@ func (fe *frontendServer) chooseAd(ctx context.Context, ctxKeys []string, log lo
 	return ads[n.Int64()]
 }
 
-func renderHTTPError(log logrus.FieldLogger, r *http.Request, w http.ResponseWriter, err error, code int) {
-	log.WithField("error", err).Error("request error")
-	errMsg := fmt.Sprintf("%+v", err)
-	w.WriteHeader(code)
-	if templateErr := getTemplates().ExecuteTemplate(w, "error", injectCommonTemplateData(r, map[string]interface{}{
-		"error":       errMsg,
-		"status_code": code,
-		"status":      http.StatusText(code),
-	})); templateErr != nil {
-		log.Println(templateErr)
-	}
-}
-
 func injectCommonTemplateData(r *http.Request, payload map[string]interface{}) map[string]interface{} {
 	data := map[string]interface{}{
-		"session_id":      sessionID(r),
-		"request_id":      r.Context().Value(ctxKeyRequestID{}),
-		"user_currency":   currentCurrency(r),
-		"is_cymbal_brand": isCymbalBrand,
-		"frontendMessage": frontendMessage,
-		"currentYear":     time.Now().Year(),
-		"baseUrl":         baseUrl,
+		"session_id":       sessionID(r),
+		"request_id":       r.Context().Value(ctxKeyRequestID{}),
+		"user_currency":    currentCurrency(r),
+		"brand_name":       brand.Name,
+		"brand_tagline":    brand.Tagline,
+		"frontendMessage":  frontendMessage,
+		"currentYear":      time.Now().Year(),
+		"baseUrl":          baseUrl,
+		"orders_enabled":   ordersEnabled,
+		"mailbox_enabled":  mailboxEnabled,
+		"accounts_enabled": accountsEnabled,
 	}
+	if u := userOf(r); u != nil {
+		data["user"] = u
+	}
+	faroTemplateData(r, data)
 	for k, v := range payload {
 		data[k] = v
 	}
@@ -565,6 +705,14 @@ func sessionID(r *http.Request) string {
 	return ""
 }
 
+// accountID is the signed-in user's id for PlaceOrderRequest.account_id, "" for an anonymous visitor.
+func accountID(r *http.Request) string {
+	if u := userOf(r); u != nil {
+		return u.ID
+	}
+	return ""
+}
+
 func cartIDs(c []*pb.CartItem) []string {
 	out := make([]string, len(c))
 	for i, v := range c {
@@ -581,9 +729,42 @@ func cartSize(c []*pb.CartItem) int {
 	return cartSize
 }
 
+// currencyDecimals: minor-unit digits shown per currency. The whitelist (whitelistedCurrencies) has
+// one without a minor unit, JPY; everything else, including a code we do not know, shows two.
+var currencyDecimals = map[string]int{"JPY": 0}
+
+func decimalsOf(code string) int {
+	if d, ok := currencyDecimals[code]; ok {
+		return d
+	}
+	return 2
+}
+
+// renderMoney shows an amount rounded to the NEAREST minor unit, half up on the magnitude (the
+// nanos are carried into the units): 29.989999999 is $29.99, 0.999999999 is $1.00, 1999.5 JPY is
+// ¥2000. currency-service floors its answers to the nanosecond, so truncating (what this did
+// before) showed 29.99 as $29.98. Sums are made on exact units/nanos by the callers and rendered
+// once, so a displayed total is the rounding of the exact total, never the sum of rounded parts.
 func renderMoney(money *pb.Money) string {
-	currencyLogo := renderCurrencyLogo(money.GetCurrencyCode())
-	return fmt.Sprintf("%s%d.%02d", currencyLogo, money.GetUnits(), money.GetNanos()/10000000)
+	d := decimalsOf(money.GetCurrencyCode())
+	total := new(big.Int).Mul(big.NewInt(money.GetUnits()), big.NewInt(1_000_000_000))
+	total.Add(total, big.NewInt(int64(money.GetNanos())))
+	neg := total.Sign() < 0
+	total.Abs(total)
+	step := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(9-d)), nil) // nanos per minor unit
+	minor := new(big.Int).Add(total, new(big.Int).Rsh(step, 1))
+	minor.Quo(minor, step)
+	scale := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(d)), nil)
+	whole, frac := new(big.Int).QuoRem(minor, scale, new(big.Int))
+	sign := ""
+	if neg && minor.Sign() != 0 {
+		sign = "-"
+	}
+	out := sign + renderCurrencyLogo(money.GetCurrencyCode()) + whole.String()
+	if d > 0 {
+		out += fmt.Sprintf(".%0*d", d, frac.Int64())
+	}
+	return out
 }
 
 func renderCurrencyLogo(currencyCode string) string {

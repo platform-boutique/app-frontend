@@ -2,15 +2,11 @@ package main
 
 import (
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/grafana/pyroscope-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/sirupsen/logrus"
 )
 
 // ---------------------------------------------------------------------------
@@ -44,7 +40,7 @@ var (
 )
 
 func initMetrics() {
-	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight)
+	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight, currencyCacheTotal)
 }
 
 // metricsMiddleware wraps each route and records Prometheus HTTP metrics.
@@ -67,28 +63,6 @@ func metricsMiddleware(next http.Handler, route string) http.Handler {
 	})
 }
 
-// startMetricsServer starts a dedicated Prometheus scrape endpoint.
-func startMetricsServer(log logrus.FieldLogger) {
-	metricsPort := os.Getenv("METRICS_PORT")
-	if metricsPort == "" {
-		metricsPort = "9464"
-	}
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.Handler())
-	log.Infof("Prometheus metrics server listening on :%s/metrics", metricsPort)
-	go func() {
-		srv := &http.Server{
-			Addr:         ":" + metricsPort,
-			Handler:      mux,
-			ReadTimeout:  10 * time.Second,
-			WriteTimeout: 10 * time.Second,
-		}
-		if err := srv.ListenAndServe(); err != nil {
-			log.Warnf("metrics server error: %v", err)
-		}
-	}()
-}
-
 // wrapRoutes wraps all named routes in the router with metricsMiddleware.
 func wrapRoutes(r *mux.Router) {
 	_ = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
@@ -102,37 +76,4 @@ func wrapRoutes(r *mux.Router) {
 		}
 		return nil
 	})
-}
-
-// ---------------------------------------------------------------------------
-// Pyroscope continuous profiling
-// ---------------------------------------------------------------------------
-
-func initProfiling(log logrus.FieldLogger) {
-	pyroscopeAddr := os.Getenv("PYROSCOPE_ADDR")
-	if pyroscopeAddr == "" {
-		pyroscopeAddr = "http://pyroscope:4040"
-	}
-	serviceName := os.Getenv("OTEL_SERVICE_NAME")
-	if serviceName == "" {
-		serviceName = "frontend"
-	}
-
-	_, err := pyroscope.Start(pyroscope.Config{
-		ApplicationName: serviceName,
-		ServerAddress:   pyroscopeAddr,
-		Logger:          pyroscope.StandardLogger,
-		ProfileTypes: []pyroscope.ProfileType{
-			pyroscope.ProfileCPU,
-			pyroscope.ProfileAllocObjects,
-			pyroscope.ProfileAllocSpace,
-			pyroscope.ProfileInuseObjects,
-			pyroscope.ProfileInuseSpace,
-		},
-	})
-	if err != nil {
-		log.Warnf("pyroscope init failed, continuing without it: %v", err)
-		return
-	}
-	log.Infof("Pyroscope profiling initialised → %s", pyroscopeAddr)
 }

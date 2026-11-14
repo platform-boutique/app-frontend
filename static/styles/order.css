@@ -1,53 +1,20 @@
-/**
- * Copyright 2020 Google LLC
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
+/* Order confirmation. Tokens come from styles.css. */
 
-.order {
-    background: #F9F9F9;
-}
+.order-page { max-width: 720px; padding-block: var(--space-7) 0; }
 
-.order-complete-section {
-    max-width: 487px;
-    padding-top: 56px;
-    padding-bottom: 120px;
+.order-summary { margin: var(--space-5) 0 0; text-align: left; }
+.order-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
 }
-
-.order-complete-section h3 {
-    margin: 0;
-    font-size: 36px;
-    font-weight: normal;
-}
-
-.order-complete-section p {
-    margin-top: 8px;
-}
-
-.order-complete-section .padding-y-24 {
-    padding-bottom: 24px;
-    padding-top: 24px;
-}
-
-.order-complete-section .border-bottom-solid {
-    border-bottom: 1px solid rgba(154, 160, 166, 0.5);
-}
-
-.order-complete-section .cymbal-button-primary {
-    margin-top: 24px;
-}
-
-.order-complete-section a.cymbal-button-primary:hover {
-    text-decoration: none;
-    color: white;
-}
+.order-row:first-child { border-top: 1px solid var(--color-border); }
+.order-row dt { color: var(--color-text-muted); }
+.order-row dd { margin: 0 0 0 auto; font-weight: 600; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.order-id { font-family: var(--font-mono); font-size: var(--text-sm); }
+.order-total { border-bottom: 0; font-size: var(--text-lg); }
+.order-total dt { color: var(--color-text); font-weight: 700; }
+.order-total dd { font-weight: 800; }

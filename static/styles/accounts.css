@@ -1,0 +1,59 @@
+/*
+ * Sign in, registration and account page (templates/account.html) and the account link in the
+ * header. Tokens come from styles.css, form controls and notices from styles.css / reviews.css,
+ * so light, dark and the wide layout follow along.
+ */
+
+/* ------------------------------------------------------------- header link */
+
+.account-link { width: auto; gap: var(--space-2); padding-inline: var(--space-3); font-size: var(--text-sm); font-weight: 600; }
+.account-link-label { display: none; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "Sign in" is a word the visitor has to find: always shown. The name only where there is room. */
+.account-link.is-signin .account-link-label { display: inline; }
+@media (min-width: 720px) {
+  .account-link-label { display: inline; }
+}
+@media (max-width: 719px) {
+  .account-link:not(.is-signin) { width: 44px; padding-inline: 0; }
+}
+
+/* ----------------------------------------------------------- sign in / up */
+
+.auth-page, .account-page { padding-block: var(--space-6) var(--space-7); }
+
+/* form card next to a short explanation on wide screens, stacked below */
+.auth-layout { display: grid; gap: var(--space-5); align-items: start; }
+@media (min-width: 900px) {
+  .auth-layout { grid-template-columns: minmax(0, 32rem) minmax(0, 1fr); gap: var(--space-7); }
+}
+
+.auth-card {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+@media (max-width: 479px) { .auth-card { padding: var(--space-4); } }
+.auth-card h1 { margin: 0; font-size: var(--text-2xl); }
+.auth-card .form-notice { margin: 0; }
+.field-hint { margin: 0; font-size: var(--text-sm); }
+.auth-switch { margin: 0; font-size: var(--text-sm); }
+
+.auth-aside { padding: var(--space-2) 0; max-width: 46ch; }
+.auth-aside h2 { font-size: var(--text-lg); margin: 0 0 var(--space-3); }
+.auth-points { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.auth-points li { display: flex; align-items: flex-start; gap: var(--space-3); color: var(--color-text-muted); }
+.auth-points svg { flex: none; width: 22px; height: 22px; margin-top: 2px; color: var(--color-text); }
+
+/* ------------------------------------------------------------ account page */
+
+.account-layout { display: grid; gap: var(--space-5); align-items: start; }
+@media (min-width: 900px) {
+  .account-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+.account-details { margin-top: 0; }
+.account-details dd { overflow-wrap: anywhere; text-align: right; }
+.account-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.account-signout { margin: 0; }

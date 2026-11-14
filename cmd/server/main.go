@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -14,6 +16,14 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"frontend/internal/obs"
+
+	pb "frontend/genproto"
+	pbi "frontend/genproto/inventory"
+	pbm "frontend/genproto/mailbox"
+	pbo "frontend/genproto/orders"
+	pbu "frontend/genproto/users"
 )
 
 const (
@@ -24,6 +34,7 @@ const (
 	cookiePrefix    = "shop_"
 	cookieSessionID = cookiePrefix + "session-id"
 	cookieCurrency  = cookiePrefix + "currency"
+	cookieAuth      = cookiePrefix + "auth"
 )
 
 var (
@@ -47,6 +58,8 @@ type frontendServer struct {
 
 	currencySvcAddr string
 	currencySvcConn *grpc.ClientConn
+	currencyClient  pb.CurrencyServiceClient // nil = the client of currencySvcConn; a test double otherwise
+	currency        currencyCache
 
 	cartSvcAddr string
 	cartSvcConn *grpc.ClientConn
@@ -62,45 +75,57 @@ type frontendServer struct {
 
 	adSvcAddr string
 	adSvcConn *grpc.ClientConn
+
+	// optional: nil when REVIEW_SERVICE_ADDR is set to an empty string (reviews off)
+	reviewSvcAddr string
+	reviewSvcConn *grpc.ClientConn
+	reviews       pb.ReviewServiceClient
+
+	// optional: nil when ORDER_SERVICE_ADDR is set to an empty string (order history and tracking off)
+	orderSvcAddr string
+	orderSvcConn *grpc.ClientConn
+	orders       pbo.OrderServiceClient
+
+	// optional: nil when USER_SERVICE_ADDR is set to an empty string (accounts off)
+	userSvcAddr string
+	userSvcConn *grpc.ClientConn
+	users       pbu.UserServiceClient
+
+	// optional: nil when INVENTORY_SERVICE_ADDR is set to an empty string (the catalogue's stock is used)
+	inventorySvcAddr string
+	inventorySvcConn *grpc.ClientConn
+	inventory        pbi.InventoryServiceClient
+
+	// optional: nil when EMAIL_SERVICE_ADDR is set to an empty string (the mailbox is off); it also needs the orders
+	emailSvcAddr string
+	emailSvcConn *grpc.ClientConn
+	mailbox      pbm.MailboxServiceClient
+
+	nav navCache
 }
 
 func main() {
-	ctx := context.Background()
-
 	log := logrus.New()
-	log.Level = logrus.DebugLevel
-	log.Formatter = &logrus.JSONFormatter{
-		FieldMap: logrus.FieldMap{
-			logrus.FieldKeyTime:  "timestamp",
-			logrus.FieldKeyLevel: "severity",
-			logrus.FieldKeyMsg:   "message",
-		},
-		TimestampFormat: time.RFC3339Nano,
-	}
-	log.Out = os.Stdout
 
-	// --- Observability ---
+	// The env contract (OTEL_*, PYROSCOPE_ADDR), the JSON logs (LOG_LEVEL, trace_id/span_id), the OTLP
+	// pipelines, Pyroscope, build_info and /metrics on :9090 (METRICS_PORT) live in internal/obs.
 	initMetrics()
-	startMetricsServer(log)
+	o := obs.Start(context.Background(), obs.Options{Service: "frontend", Loggers: []*logrus.Logger{log}})
+	defer o.Recover()
+	defer o.Shutdown()
+	startupFatal = o.Fatal
 
-	// --- Telemetry: traces, metrics and logs pushed over OTLP/gRPC (Alloy → Tempo/Mimir/Loki) ---
-	shutdownTelemetry, err := initTelemetry(ctx, "frontend", log)
+	// --- Browser RUM (Grafana Faro): validated first so a typo fails the start, not the first page ---
+	faroCfg, err := faroSettingsFromEnv(os.Getenv)
 	if err != nil {
-		log.Warnf("telemetry disabled, continuing without it: %v", err)
-	} else {
-		log.Info("telemetry enabled (OTLP/gRPC)")
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = shutdownTelemetry(shutdownCtx)
-		}()
+		o.Fatal("invalid configuration", err)
 	}
-
-	if os.Getenv("ENABLE_PROFILING") == "1" {
-		log.Info("Profiling enabled.")
-		go initProfiling(log)
+	faro = faroCfg
+	if faro != nil {
+		log.Infof("Faro RUM enabled: app %q version %q env %q, collector %s, session sample rate %v",
+			faro.AppName, faro.AppVersion, faro.Env, faro.CollectorURL, faro.SampleRate)
 	} else {
-		log.Info("Profiling disabled.")
+		log.Info("FARO_COLLECTOR_URL is empty: browser RUM (Faro) is off")
 	}
 
 	// --- Service wiring ---
@@ -115,25 +140,80 @@ func main() {
 	mustMapEnv(&svc.shippingSvcAddr, "SHIPPING_SERVICE_ADDR")
 	mustMapEnv(&svc.adSvcAddr, "AD_SERVICE_ADDR")
 
-	mustConnGRPC(ctx, &svc.currencySvcConn, svc.currencySvcAddr)
-	mustConnGRPC(ctx, &svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
-	mustConnGRPC(ctx, &svc.cartSvcConn, svc.cartSvcAddr)
-	mustConnGRPC(ctx, &svc.recommendationSvcConn, svc.recommendationSvcAddr)
-	mustConnGRPC(ctx, &svc.shippingSvcConn, svc.shippingSvcAddr)
-	mustConnGRPC(ctx, &svc.checkoutSvcConn, svc.checkoutSvcAddr)
-	mustConnGRPC(ctx, &svc.adSvcConn, svc.adSvcAddr)
+	mustConnGRPC(&svc.currencySvcConn, svc.currencySvcAddr)
+	mustConnGRPC(&svc.productCatalogSvcConn, svc.productCatalogSvcAddr)
+	mustConnGRPC(&svc.cartSvcConn, svc.cartSvcAddr)
+	mustConnGRPC(&svc.recommendationSvcConn, svc.recommendationSvcAddr)
+	mustConnGRPC(&svc.shippingSvcConn, svc.shippingSvcAddr)
+	mustConnGRPC(&svc.checkoutSvcConn, svc.checkoutSvcAddr)
+	mustConnGRPC(&svc.adSvcConn, svc.adSvcAddr)
+
+	// review-service is optional: lazy connection, pages render without ratings while it is down
+	if svc.reviewSvcAddr = reviewAddrFromEnv(); svc.reviewSvcAddr != "" {
+		mustConnGRPC(&svc.reviewSvcConn, svc.reviewSvcAddr)
+		svc.reviews = pb.NewReviewServiceClient(svc.reviewSvcConn)
+	} else {
+		log.Info("REVIEW_SERVICE_ADDR is empty: ratings and reviews are off")
+	}
+
+	// order-service is optional too: lazy connection, only /orders and /orders/{id} depend on it
+	if svc.orderSvcAddr = ordersAddrFromEnv(); svc.orderSvcAddr != "" {
+		mustConnGRPC(&svc.orderSvcConn, svc.orderSvcAddr)
+		svc.orders = pbo.NewOrderServiceClient(svc.orderSvcConn)
+		ordersEnabled = true
+	} else {
+		log.Info("ORDER_SERVICE_ADDR is empty: order history and tracking are off")
+	}
+
+	// user-service is optional as well: lazy connection, only the account pages and the identity of a request depend on it
+	if svc.userSvcAddr = usersAddrFromEnv(); svc.userSvcAddr != "" {
+		mustConnGRPC(&svc.userSvcConn, svc.userSvcAddr)
+		svc.users = pbu.NewUserServiceClient(svc.userSvcConn)
+		accountsEnabled = true
+	} else {
+		log.Info("USER_SERVICE_ADDR is empty: accounts are off")
+	}
+
+	// inventory-service is optional as well: lazy connection, without it (or while it is down) the catalogue's stock is shown
+	if svc.inventorySvcAddr = inventoryAddrFromEnv(); svc.inventorySvcAddr != "" {
+		mustConnGRPC(&svc.inventorySvcConn, svc.inventorySvcAddr)
+		svc.inventory = pbi.NewInventoryServiceClient(svc.inventorySvcConn)
+	} else {
+		log.Info("INVENTORY_SERVICE_ADDR is empty: live stock is off, the catalogue's stock is used")
+	}
+
+	// email-service (the mailbox) is optional as well: lazy connection, only /emails and the links to it depend on it.
+	// Which mails are the visitor's is told by order-service, so the mailbox needs the orders too.
+	if svc.emailSvcAddr = emailAddrFromEnv(); svc.emailSvcAddr == "" {
+		log.Info("EMAIL_SERVICE_ADDR is empty: the mailbox is off")
+	} else if svc.orders == nil {
+		log.Info("ORDER_SERVICE_ADDR is empty: the mailbox is off (it needs the orders to know whose mail is whose)")
+	} else {
+		mustConnGRPC(&svc.emailSvcConn, svc.emailSvcAddr)
+		svc.mailbox = pbm.NewMailboxServiceClient(svc.emailSvcConn)
+		mailboxEnabled = true
+	}
 
 	// --- Router ---
 	r := mux.NewRouter()
 	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/product/{id}", svc.productHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/product/{id}/reviews", svc.postReviewHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/cart", svc.viewCartHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/cart", svc.addToCartHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/setCurrency", svc.setCurrencyHandler).Methods(http.MethodPost)
 	r.HandleFunc(baseUrl+"/logout", svc.logoutHandler).Methods(http.MethodGet)
+	svc.accountRoutes(r)
+	r.HandleFunc(baseUrl+"/orders", svc.ordersHistoryHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/orders/{id}", svc.orderTrackingHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/emails", svc.emailsHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/emails/{id}", svc.emailHandler).Methods(http.MethodGet, http.MethodHead)
 	r.HandleFunc(baseUrl+"/cart/checkout", svc.placeOrderHandler).Methods(http.MethodPost)
-	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", http.FileServer(http.Dir("./static/"))))
+	r.HandleFunc(baseUrl+"/ads/{id}/click", svc.adClickHandler).Methods(http.MethodGet)
+	static := newStaticServer(http.Dir("./static/"))
+	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", static))
+	r.Handle(baseUrl+"/favicon.ico", static.file("/favicon.svg")) // the logo; browsers ask for it when a page has no <link rel=icon>
 	r.HandleFunc(baseUrl+"/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "User-agent: *\nDisallow: /") })
 	r.HandleFunc(baseUrl+"/_healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "ok") })
 	r.HandleFunc(baseUrl+"/product-meta/{ids}", svc.getProductByID).Methods(http.MethodGet)
@@ -142,6 +222,7 @@ func main() {
 	wrapRoutes(r)
 
 	var handler http.Handler = r
+	handler = svc.withUser(handler)                    // who is asking: shop_auth cookie -> user-service GetSession
 	handler = &logHandler{log: log, next: handler}     // structured logging
 	handler = ensureSessionID(handler)                 // session ID cookie
 	handler = otelhttp.NewHandler(handler, "frontend") // OTel tracing
@@ -160,26 +241,54 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	log.Fatal(srv.ListenAndServe())
+
+	// SIGTERM/SIGINT: stop accepting, let in-flight requests finish (bounded), then the deferred
+	// o.Shutdown flushes telemetry (bounded at obs.DefaultShutdownTimeout), so the process is gone
+	// well inside 10 s even when the collector is unreachable.
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stopSignals()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.ListenAndServe() }()
+	select {
+	case err := <-serveErr:
+		o.Fatal("server error", err)
+	case <-sigCtx.Done():
+	}
+	log.Info("shutdown signal received, draining")
+	drainCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+	defer cancel()
+	if err := srv.Shutdown(drainCtx); err != nil {
+		log.WithError(err).Warn("drain timed out, closing remaining connections")
+		_ = srv.Close()
+	}
+	log.Info("stopped")
 }
+
+// drainTimeout is how long in-flight requests get after SIGTERM; with the 4 s telemetry flush
+// that keeps the whole exit under the 10 s of CODE-04.
+const drainTimeout = 5 * time.Second
+
+// startupFatal logs a startup error as one JSON line and exits 1; main points it at obs.Fatal.
+var startupFatal = func(msg string, err error) { logrus.WithError(err).Error(msg); os.Exit(1) }
 
 func mustMapEnv(target *string, envKey string) {
 	v := os.Getenv(envKey)
 	if v == "" {
-		panic(fmt.Sprintf("environment variable %q not set", envKey))
+		startupFatal("invalid configuration", fmt.Errorf("environment variable %q not set", envKey))
 	}
 	*target = v
 }
 
-func mustConnGRPC(ctx context.Context, conn **grpc.ClientConn, addr string) {
+// mustConnGRPC creates a lazy client connection (no dial here); the deadline of each
+// call is set where it is made, see rpc.go.
+func mustConnGRPC(conn **grpc.ClientConn, addr string) {
 	var err error
-	_, cancel := context.WithTimeout(ctx, time.Second*3)
-	defer cancel()
 	*conn, err = grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithChainUnaryInterceptor(obs.UnaryClientInterceptor()), // x-request-id to the next service's logs
 	)
 	if err != nil {
-		panic(errors.Wrapf(err, "grpc: failed to connect %s", addr))
+		startupFatal("grpc client", errors.Wrapf(err, "failed to connect %s", addr))
 	}
 }

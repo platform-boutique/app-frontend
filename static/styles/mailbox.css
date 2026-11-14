@@ -1,0 +1,80 @@
+/*
+ * The mailbox (templates/mailbox.html): the list at /emails and one mail at /emails/{id}.
+ * Tokens come from styles.css, cards and the summary list from orders.css, so light, dark and
+ * the wide layout follow along.
+ */
+
+.mailbox-page { padding-bottom: var(--space-6); }
+.mailbox-head { padding-top: var(--space-6); }
+.mailbox-page .breadcrumbs { padding-top: var(--space-5); }
+.mailbox-page .breadcrumbs + .mailbox-head { padding-top: var(--space-3); }
+.mailbox-empty { max-width: 640px; margin-inline: auto; padding-top: var(--space-4); }
+.mail-subject { overflow-wrap: anywhere; }
+.mail-to { overflow-wrap: anywhere; }
+
+/* ------------------------------------------------------------------ list */
+
+.mail-list { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+
+.mail-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+.mail-card-main { min-width: 0; }
+.mail-card-subject { margin: 0 0 var(--space-1); font-family: var(--font-sans); font-size: var(--text-lg); font-weight: 700; overflow-wrap: anywhere; }
+.mail-card-subject a { color: var(--color-text); text-decoration: none; }
+.mail-card-subject a:hover { color: var(--color-accent); text-decoration: underline; }
+.mail-card-meta, .mail-card-order { margin: 0 0 var(--space-1); font-size: var(--text-sm); }
+.mail-card-link { justify-self: start; }
+
+@media (min-width: 720px) {
+  .mail-card { grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: var(--space-4) var(--space-5); gap: var(--space-5); }
+  .mail-card-link { justify-self: end; }
+}
+
+/* ---------------------------------------------------------------- detail */
+
+.mail-card-headers { margin-bottom: var(--space-5); }
+.mail-headers { margin: 0; }
+
+/* the mail is its own document: it keeps the light page it was written for, also in the dark theme */
+.mail-frame-wrap { margin-bottom: var(--space-5); }
+.mail-frame {
+  display: block;
+  width: 100%;
+  height: 70vh;
+  min-height: 420px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: #fff; /* the mail's own page, deliberately not themed */
+  color-scheme: light;
+}
+@media (max-width: 479px) {
+  .mail-frame { height: 75vh; min-height: 360px; }
+}
+
+.mail-text summary { cursor: pointer; font-weight: 700; }
+.mail-text[open] summary { margin-bottom: var(--space-3); }
+.mail-text-body {
+  margin: 0;
+  padding: var(--space-4);
+  max-height: 60vh;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ------------------------------------------------------------- order page */
+
+.track-email { display: grid; gap: var(--space-3); }
+.track-email p { margin: 0; }

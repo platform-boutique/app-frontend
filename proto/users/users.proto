@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+// Own package, like hipstershop.orders: a client that also compiles demo.proto gets no name clashes.
+package hipstershop.users;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "frontend/genproto/users;users";
+
+service UserService {
+  // Register creates the account and signs it in (same response as Login).
+  // INVALID_ARGUMENT: validation (message names the field), ALREADY_EXISTS: email taken,
+  // RESOURCE_EXHAUSTED: too many attempts.
+  rpc Register(RegisterRequest) returns (AuthResponse);
+  // Login. UNAUTHENTICATED with the ONE generic message "wrong email or password" for an unknown
+  // email and for a wrong password alike (same code path, same cost: a dummy bcrypt compare for unknown emails).
+  // RESOURCE_EXHAUSTED: too many attempts for this email (per process).
+  rpc Login(LoginRequest) returns (AuthResponse);
+  // GetSession resolves a token. UNAUTHENTICATED when unknown, expired or logged out.
+  rpc GetSession(GetSessionRequest) returns (User);
+  // Logout revokes the token. Idempotent: an unknown or already revoked token is OK.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+message User {
+  string id = 1;                              // UUID v4
+  string email = 2;                           // lower-cased
+  string name = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message RegisterRequest {
+  string email = 1;     // 3-254 chars, plain address (no display name), lower-cased and trimmed by the service
+  string password = 2;  // 8-72 BYTES (bcrypt limit), not trimmed
+  string name = 3;      // 1-100 chars, trimmed
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message AuthResponse {
+  User user = 1;
+  string token = 2;                           // opaque, 32 random bytes, base64url without padding; returned ONLY here
+  google.protobuf.Timestamp expires_at = 3;   // 14 days after login
+}
+
+message GetSessionRequest { string token = 1; }
+message LogoutRequest     { string token = 1; }
+message LogoutResponse    {}

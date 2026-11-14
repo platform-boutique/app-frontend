@@ -1,86 +1,86 @@
-<!--
- Copyright 2020 Google LLC
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
--->
-
 {{ define "product" }}
 {{ template "header" . }}
-<div {{ with $.platform_css }} class="{{.}}" {{ end }}>
-  <span class="platform-flag">
-    {{$.platform_name}}
-  </span>
-</div>
+<main id="main">
+  <nav class="breadcrumbs container" aria-label="Breadcrumb">
+    <ol>
+      <li><a href="{{ $.baseUrl }}/">Shop</a></li>
+      {{ with $.product.Category }}<li><a href="{{ $.baseUrl }}/?category={{ .Id }}">{{ .Name }}</a></li>{{ end }}
+      <li aria-current="page">{{ $.product.Item.Name }}</li>
+    </ol>
+  </nav>
 
-<main role="main">
-  <div class="h-product container">
-    <div class="row">
-      <div class="col-md-6">
-        <img class="product-image" alt="" src="{{ $.baseUrl }}{{$.product.Item.Picture}}" />
+  <div class="product-detail container">
+    <div class="gallery" data-gallery>
+      {{ with $.product.Images }}
+      <div class="media gallery-main">
+        <img src="{{ $.baseUrl }}{{ index . 0 }}" alt="{{ $.product.Item.Name }}" width="1000" height="1000" data-gallery-main>
       </div>
-      <div class="product-info col-md-5">
-        <div class="product-wrapper">
+      {{ if gt (len .) 1 }}
+      <ul class="gallery-thumbs" aria-label="More images">
+        {{ range $i, $img := . }}
+        <li>
+          <a class="gallery-thumb" href="{{ $.baseUrl }}{{ $img }}" data-gallery-src="{{ $.baseUrl }}{{ $img }}"{{ if eq $i 0 }} aria-current="true"{{ end }}>
+            <img loading="lazy" src="{{ $.baseUrl }}{{ $img }}" alt="{{ $.product.Item.Name }}, image {{ add1 $i }}" width="1000" height="1000">
+          </a>
+        </li>
+        {{ end }}
+      </ul>
+      {{ end }}
+      {{ end }}
+    </div>
 
-          <h2>{{ $.product.Item.Name }}</h2>
-          <p class="product-price">{{ renderMoney $.product.Price }}</p>
-          <p>{{ $.product.Item.Description }}</p>
+    <div class="product-info">
+      {{ with $.product.Item.Brand }}<p class="product-brand">{{ . }}</p>{{ end }}
+      <h1>{{ $.product.Item.Name }}</h1>
+      {{ with $.reviews }}{{ if .Rating.Count }}
+      <p class="product-rating"><a href="#reviews">{{ template "stars" .Rating.Average }}
+        <span>{{ .Rating.Label }}</span></a>
+      </p>
+      {{ end }}{{ end }}
+      <p class="product-price">{{ renderMoney $.product.Price }}</p>
+      <p class="stock-status{{ if $.product.Stock.Out }} is-out{{ else if $.product.Stock.Low }} is-low{{ else }} is-in{{ end }}">
+        {{ if $.product.Stock.Out }}Out of stock{{ else if $.product.Stock.Low }}Only {{ $.product.Stock.N }} left in stock{{ else }}In stock{{ end }}
+      </p>
+      <p class="product-description">{{ $.product.Item.Description }}</p>
 
-          {{ if $.packagingInfo }}
-          <div class="product-packaging">
-            <h3>Packaging</h3>
-            <span>
-              Weight: {{ if $.packagingInfo.Weight }}{{ $.packagingInfo.Weight }}lb{{ else }}n/a{{ end }}
-            </span>
-            <span>
-              Width: {{ if $.packagingInfo.Width }}{{ $.packagingInfo.Width }}cm{{ else }}n/a{{ end }}
-            </span>
-            <span>
-              Height: {{ if $.packagingInfo.Height }}{{ $.packagingInfo.Height }}cm{{ else }}n/a{{ end }}
-            </span>
-            <span>
-              Depth: {{ if $.packagingInfo.Depth }}{{ $.packagingInfo.Depth }}cm{{ else }}n/a{{ end }}
-            </span>
-          </div>
-          {{ end }}
+      {{ with $.product.Item.Tags }}
+      <ul class="tags" aria-label="Tags">
+        {{ range . }}<li><a class="tag" href="{{ $.baseUrl }}/?q={{ . }}">{{ . }}</a></li>{{ end }}
+      </ul>
+      {{ end }}
 
-          <form method="POST" action="{{ $.baseUrl }}/cart">
-            <input type="hidden" name="product_id" value="{{$.product.Item.Id}}" />
-            <div class="product-quantity-dropdown">
-              <select name="quantity" id="quantity">
-                <option>1</option>
-                <option>2</option>
-                <option>3</option>
-                <option>4</option>
-                <option>5</option>
-                <option>10</option>
-              </select>
-              <img src="{{ $.baseUrl }}/static/icons/Hipster_DownArrow.svg" alt="">
-            </div>
-            <button type="submit" class="cymbal-button-primary">Add To Cart</button>
-          </form>
+      <form method="POST" action="{{ $.baseUrl }}/cart" class="add-to-cart">
+        <input type="hidden" name="product_id" value="{{ $.product.Item.Id }}">
+        <div class="field">
+          <label for="quantity">Quantity</label>
+          <span class="select-wrap">
+            <select class="select" name="quantity" id="quantity">
+              {{ range $.product.Quantities }}<option>{{ . }}</option>
+              {{ else }}<option>1</option>
+              {{ end }}
+            </select>
+            {{ template "icon_chevron" . }}
+          </span>
         </div>
-      </div>
+        {{ if $.product.Stock.Out }}
+        <button type="submit" class="btn btn-primary" disabled>Out of stock</button>
+        {{ else }}
+        <button type="submit" class="btn btn-primary">Add to cart</button>
+        {{ end }}
+      </form>
+
+      <ul class="product-perks">
+        <li>{{ template "icon_truck" . }} Shipping cost is shown in the cart before you order.</li>
+        <li>{{ template "icon_return" . }} Demo store: no payment is taken.</li>
+      </ul>
     </div>
   </div>
-  <div>
-    {{ if $.recommendations}}
-      {{ template "recommendations" $ }}
-    {{ end }}
-  </div>
-  <div class="ad">
-   {{ if $.ad }}{{ template "text_ad" $ }}{{ end }}
-  </div>
 
+  {{ template "reviews_section" . }}
+
+  {{ if $.recommendations }}{{ template "recommendations" $ }}{{ end }}
+  {{ if $.ad }}{{ template "text_ad" $ }}{{ end }}
 </main>
+<script defer src="{{ $.baseUrl }}/static/js/gallery.js"></script>
 {{ template "footer" . }}
 {{ end }}

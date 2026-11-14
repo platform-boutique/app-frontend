@@ -1,0 +1,141 @@
+{{/* Sign in (/login), registration (/register) and the account page (/account). Styles: static/styles/accounts.css (form look from reviews.css). */}}
+
+{{/* The summary at the top of a form that was not accepted; the links go to the fields. */}}
+{{ define "auth_errors" }}
+{{ with $.form }}{{ if .HasErrors }}
+<div class="form-notice is-danger" role="alert">
+    {{ template "icon_alert" $ }}
+    <div>
+        <strong>{{ if index .Errors "form" }}{{ index .Errors "form" }}{{ else }}Please check the form.{{ end }}</strong>
+        {{ if or (index .Errors "name") (index .Errors "email") (index .Errors "password") }}
+        <ul>
+            {{ with index .Errors "name" }}<li><a href="#auth-name">{{ . }}</a></li>{{ end }}
+            {{ with index .Errors "email" }}<li><a href="#auth-email">{{ . }}</a></li>{{ end }}
+            {{ with index .Errors "password" }}<li><a href="#auth-password">{{ . }}</a></li>{{ end }}
+        </ul>
+        {{ end }}
+    </div>
+</div>
+{{ end }}{{ end }}
+{{ end }}
+
+{{ define "auth_email_field" }}
+{{ with $.form }}
+<div class="field">
+    <label for="auth-email">Email</label>
+    <input class="input" type="email" id="auth-email" name="email" value="{{ .Email }}" maxlength="254" required
+        autocomplete="{{ if $.register }}email{{ else }}username{{ end }}" autocapitalize="none" spellcheck="false"
+        {{ if index .Errors "email" }}aria-invalid="true" aria-describedby="auth-email-error"{{ end }}>
+    {{ with index .Errors "email" }}<p class="field-error" id="auth-email-error">{{ . }}</p>{{ end }}
+</div>
+{{ end }}
+{{ end }}
+
+{{ define "login_page" }}
+{{ template "header" . }}
+<main id="main" class="auth-page">
+    <div class="container">
+        <div class="auth-layout">
+            <form class="auth-card" id="login-form" method="POST" action="{{ $.baseUrl }}/login" aria-labelledby="auth-title" novalidate>
+                <h1 id="auth-title">Sign in</h1>
+                {{ template "auth_errors" . }}
+                {{ with $.form }}{{ if .Next }}<input type="hidden" name="next" value="{{ .Next }}">{{ end }}{{ end }}
+                {{ template "auth_email_field" . }}
+                <div class="field">
+                    <label for="auth-password">Password</label>
+                    <input class="input" type="password" id="auth-password" name="password" required autocomplete="current-password"
+                        {{ if index $.form.Errors "password" }}aria-invalid="true" aria-describedby="auth-password-error"{{ end }}>
+                    {{ with index $.form.Errors "password" }}<p class="field-error" id="auth-password-error">{{ . }}</p>{{ end }}
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+                <p class="auth-switch muted">New here? <a href="{{ $.baseUrl }}/register{{ with $.form.Next }}?next={{ . | urlquery }}{{ end }}">Create an account</a></p>
+            </form>
+            {{ template "auth_aside" . }}
+        </div>
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}
+
+{{ define "register_page" }}
+{{ template "header" . }}
+<main id="main" class="auth-page">
+    <div class="container">
+        <div class="auth-layout">
+            <form class="auth-card" id="register-form" method="POST" action="{{ $.baseUrl }}/register" aria-labelledby="auth-title" novalidate>
+                <h1 id="auth-title">Create an account</h1>
+                {{ template "auth_errors" . }}
+                {{ with $.form }}{{ if .Next }}<input type="hidden" name="next" value="{{ .Next }}">{{ end }}{{ end }}
+                <div class="field">
+                    <label for="auth-name">Your name</label>
+                    <input class="input" type="text" id="auth-name" name="name" value="{{ $.form.Name }}" maxlength="100" required autocomplete="name"
+                        {{ if index $.form.Errors "name" }}aria-invalid="true" aria-describedby="auth-name-error"{{ end }}>
+                    {{ with index $.form.Errors "name" }}<p class="field-error" id="auth-name-error">{{ . }}</p>{{ end }}
+                </div>
+                {{ template "auth_email_field" . }}
+                <div class="field">
+                    <label for="auth-password">Password</label>
+                    <input class="input" type="password" id="auth-password" name="password" required minlength="8" autocomplete="new-password"
+                        aria-describedby="auth-password-hint{{ if index $.form.Errors "password" }} auth-password-error{{ end }}"
+                        {{ if index $.form.Errors "password" }}aria-invalid="true"{{ end }}>
+                    <p class="field-hint muted" id="auth-password-hint">At least 8 characters.</p>
+                    {{ with index $.form.Errors "password" }}<p class="field-error" id="auth-password-error">{{ . }}</p>{{ end }}
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Create account</button>
+                <p class="auth-switch muted">Already have an account? <a href="{{ $.baseUrl }}/login{{ with $.form.Next }}?next={{ . | urlquery }}{{ end }}">Sign in</a></p>
+            </form>
+            {{ template "auth_aside" . }}
+        </div>
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}
+
+{{ define "auth_aside" }}
+<aside class="auth-aside" aria-label="Why have an account">
+    <h2>Why have an account?</h2>
+    <ul class="auth-points">
+        {{ if $.orders_enabled }}<li>{{ template "icon_orders" . }}<span>Your orders and their delivery progress, on every device.</span></li>{{ end }}
+        <li>{{ template "icon_cart" . }}<span>Your cart waits for you when you come back. Items from this browser are added to it when you sign in.</span></li>
+        <li>{{ template "icon_check" . }}<span>No password reset or e-mail check in this demo store: use a throwaway password.</span></li>
+    </ul>
+</aside>
+{{ end }}
+
+{{ define "account_page" }}
+{{ template "header" . }}
+<main id="main" class="account-page">
+    <div class="container">
+        <div class="section-head">
+            <h1>Your account</h1>
+        </div>
+        <div class="account-layout">
+            <section class="track-card account-card" aria-labelledby="account-details-title">
+                <h2 id="account-details-title" class="track-card-title">Details</h2>
+                <dl class="order-summary account-details">
+                    <div class="order-row">
+                        <dt>Name</dt>
+                        <dd>{{ $.user.Name }}</dd>
+                    </div>
+                    <div class="order-row">
+                        <dt>Email</dt>
+                        <dd>{{ $.user.Email }}</dd>
+                    </div>
+                </dl>
+            </section>
+            <section class="track-card account-card" aria-labelledby="account-actions-title">
+                <h2 id="account-actions-title" class="track-card-title">What would you like to do?</h2>
+                <div class="account-actions">
+                    {{ if $.orders_enabled }}<a class="btn btn-primary" href="{{ $.baseUrl }}/orders">Your orders</a>{{ end }}
+                    {{ if $.mailbox_enabled }}<a class="btn btn-secondary" href="{{ $.baseUrl }}/emails">Your emails</a>{{ end }}
+                    <a class="btn btn-secondary" href="{{ $.baseUrl }}/cart">Your cart</a>
+                    <form method="POST" action="{{ $.baseUrl }}/logout" class="account-signout">
+                        <button type="submit" class="btn btn-secondary">Sign out</button>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}

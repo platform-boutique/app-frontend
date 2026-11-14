@@ -1,40 +1,29 @@
-<!--
- Copyright 2020 Google LLC
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
--->
-
 {{ define "error" }}
-    {{ template "header" . }}
-    <div {{ with $.platform_css }} class="{{.}}" {{ end }}>
-        <span class="platform-flag">
-          {{$.platform_name}}
-        </span>
-      </div>
-    <main role="main">
-        <div class="py-5">
-            <div class="container bg-light py-3 px-lg-5 py-lg-5">
-                <h1>Uh, oh!</h1>
-                <p>Something has failed. Below are some details for debugging.</p>
-
-                <p><strong>HTTP Status:</strong> {{.status_code}} {{.status}}</p>
-                <pre class="border border-danger p-3"
-                    style="white-space: pre-wrap; word-break: keep-all;">
-                    {{- .error -}}
-                </pre>
+{{ template "header" . }}
+<main id="main">
+    <div class="container error-page">
+        <div class="notice">
+            <div class="notice-icon is-danger">{{ template "icon_alert" . }}</div>
+            <h1>{{ .title }}</h1>
+            <p>{{ .message }}</p>
+            <p class="muted">HTTP status {{ .status_code }} {{ .status }}</p>
+            <div class="notice-actions">
+                {{ if .cart_link }}<a class="btn btn-primary" href="{{ $.baseUrl }}/cart">Back to your cart</a>
+                <a class="btn btn-secondary" href="{{ $.baseUrl }}/">Back to the shop</a>
+                {{ else if .orders_link }}<a class="btn btn-primary" href="{{ $.baseUrl }}/orders">Your orders</a>
+                <a class="btn btn-secondary" href="{{ $.baseUrl }}/">Back to the shop</a>
+                {{ else }}<a class="btn btn-primary" href="{{ $.baseUrl }}/">Back to the shop</a>{{ end }}
             </div>
         </div>
-    </main>
+    </div>
+</main>
+{{ template "footer" . }}
+{{ end }}
 
-    {{ template "footer" . }}
-    {{ end }}
+{{/* The htmx answer to a failed request: swapped into #page-alert (see header.html). */}}
+{{ define "error_alert" }}
+<div class="form-notice is-danger">
+    {{ template "icon_alert" . }}
+    <p><strong>{{ .title }}.</strong> {{ .message }}</p>
+</div>
+{{ end }}

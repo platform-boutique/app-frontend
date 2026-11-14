@@ -1,0 +1,218 @@
+/*
+ * Catalogue browsing (templates/catalog.html, home.html, product.html):
+ * department tiles, search/sort toolbar, results, pagination, ratings,
+ * stock badges and the product gallery. Uses the tokens from styles.css.
+ */
+
+/* header: department links; on phones the nav row scrolls horizontally */
+.site-nav ul { flex-wrap: nowrap; }
+.site-nav li { flex: none; }
+/* the brand and the action buttons never shrink (the brand name must not turn into "Ev…", "Sign in" into "Sign…") */
+.brand, .header-actions > * { flex: none; }
+@media (min-width: 560px) and (max-width: 1359px) {
+  /* not enough room next to the brand and the actions (Orders and the account name have labels from 720px): keep Shop + All products only */
+  .site-nav li:not(:first-child):not(.nav-all) { display: none; }
+}
+
+.section-first { padding-top: var(--space-4); }
+.section-first .breadcrumbs { padding-top: 0; margin-bottom: var(--space-3); }
+.section-head h1 { margin: 0; font-size: var(--text-2xl); }
+
+/* ------------------------------------------------------- department tiles */
+
+.dept-section { padding-bottom: 0; }
+.dept-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 700px) { .dept-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .dept-tiles { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+
+.dept-tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: 96px;
+  height: 100%;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-decoration: none;
+  transition: border-color var(--transition), box-shadow var(--transition), transform var(--transition);
+}
+.dept-tile:hover { color: var(--color-text); border-color: var(--color-border-strong); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.dept-name { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 700; line-height: 1.2; }
+.dept-count { font-size: var(--text-xs); color: var(--color-text-muted); }
+/* a soft colour band per department */
+.dept-tile { background-image: linear-gradient(160deg, var(--dept-tint, var(--color-surface-2)) 0%, transparent 70%); }
+.dept-women { --dept-tint: var(--color-accent-soft); }
+.dept-men { --dept-tint: var(--color-sage); }
+.dept-accessories { --dept-tint: color-mix(in srgb, var(--color-brass) 35%, transparent); }
+.dept-beauty { --dept-tint: var(--color-accent-soft); }
+.dept-home { --dept-tint: var(--color-sage); }
+.dept-kitchen { --dept-tint: color-mix(in srgb, var(--color-brass) 35%, transparent); }
+.dept-sports { --dept-tint: var(--color-sage); }
+
+/* ----------------------------------------------------------------- toolbar */
+
+.catalog-toolbar {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3) var(--space-4);
+  align-items: end;
+  margin-bottom: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+@media (min-width: 700px) { .catalog-toolbar { grid-template-columns: 1fr 15rem; } }
+@media (min-width: 1360px) { .catalog-toolbar { grid-template-columns: minmax(0, 1fr) 18rem; } }
+.search-row { display: flex; gap: var(--space-2); }
+.search-row .input { flex: 1 1 auto; min-width: 0; }
+.search-row .btn { flex: none; }
+
+.result-count { margin: 0 0 var(--space-4); color: var(--color-text-muted); font-size: var(--text-sm); }
+.catalog-results { scroll-margin-top: calc(var(--header-h) + var(--space-4)); transition: opacity var(--transition); }
+.catalog-results.htmx-request { opacity: 0.6; }
+
+.empty-state {
+  padding: var(--space-7) var(--space-5);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+.empty-state h3 { margin-bottom: var(--space-2); }
+
+/* --------------------------------------------------------- product cards */
+
+.product-card .media { background: var(--color-media); }
+.product-card .media img { object-fit: contain; padding: 6%; }
+.stock-badge {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+.stock-badge.is-out { color: var(--color-danger); }
+.stock-badge.is-low { color: var(--color-warning); }
+.product-card-category { text-transform: none; }
+
+/* Star glyphs are masks, so the colour comes from the theme tokens (an SVG
+   data URI cannot read custom properties): outline = --color-star-empty,
+   filled part = --color-star. */
+.stars {
+  position: relative;
+  display: inline-block;
+  width: 5.5em;
+  height: 1.1em;
+  font-size: 0.8125rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+.stars::before,
+.stars-fill {
+  -webkit-mask: left / 1.1em 1.1em repeat-x;
+  mask: left / 1.1em 1.1em repeat-x;
+}
+.stars::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-star-empty);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z' fill='none' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z' fill='none' stroke='%23000' stroke-width='1.6'/%3E%3C/svg%3E");
+}
+.stars-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--color-star);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z' fill='%23000'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2l-5.7 3.1 1.2-6.4-4.7-4.4 6.4-.8z' fill='%23000'/%3E%3C/svg%3E");
+}
+
+/* --------------------------------------------------------------- paging */
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-6);
+}
+.pagination ol { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.page-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+  font-size: var(--text-sm);
+  text-decoration: none;
+}
+a.page-link:hover { border-color: var(--color-border-strong); background: var(--color-surface-2); color: var(--color-text); }
+.page-link.is-current { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-contrast); }
+.page-link.is-disabled { opacity: 0.45; }
+.page-gap { display: inline-flex; align-items: center; min-height: 44px; padding: 0 var(--space-1); color: var(--color-text-muted); }
+
+/* ---------------------------------------------------------- product page */
+
+.gallery { display: grid; gap: var(--space-3); justify-items: center; }
+/* 1000 px photos: never shown wider than 500 CSS px (640 on wide screens), so they stay sharp on 2x screens */
+.gallery-main { width: 100%; max-width: 500px; border-radius: var(--radius-lg); }
+.gallery-main img, .gallery-thumb img { object-fit: contain; }
+.gallery-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 500px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.gallery-thumb {
+  display: block;
+  width: 72px;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--color-border);
+  background: var(--color-media);
+}
+.gallery-thumb[aria-current="true"] { border-color: var(--color-accent); }
+.gallery-thumb img { width: 100%; height: 100%; mix-blend-mode: var(--media-blend); filter: var(--media-filter); }
+
+.product-brand { margin: 0 0 var(--space-1); font-size: var(--text-sm); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-sage-strong); }
+.product-rating { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-3); font-size: var(--text-sm); color: var(--color-text-muted); }
+.product-info .product-price { margin-bottom: var(--space-2); }
+.stock-status { margin: 0 0 var(--space-4); font-size: var(--text-sm); font-weight: 700; }
+.stock-status.is-in { color: var(--color-success); }
+.stock-status.is-low { color: var(--color-warning); }
+.stock-status.is-out { color: var(--color-danger); }
+a.tag { display: inline-block; text-decoration: none; text-transform: none; }
+a.tag:hover { color: var(--color-text); border-color: var(--color-border-strong); }
+.add-to-cart .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+@media (min-width: 1360px) {
+  .gallery-main, .gallery-thumbs { max-width: 640px; }
+}

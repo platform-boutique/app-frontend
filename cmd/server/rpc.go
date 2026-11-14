@@ -10,47 +10,52 @@ import (
 )
 
 const (
-	avoidNoopCurrencyConversionRPC = false
+	// A same-currency conversion is answered here, exactly. Asking the service is not harmless: it
+	// goes through EUR in floating point and floors the nanos, so 29.99 USD to USD came back as
+	// 29.989999999 for about half of the amounts.
+	avoidNoopCurrencyConversionRPC = true
+
+	// Deadlines per backend call. A hung backend must end in a 503 page well before the
+	// server's 30 s WriteTimeout drops the connection without an answer. Not configurable
+	// on purpose (no env), change them here.
+	adTimeout       = 100 * time.Millisecond // an ad is optional: no ad rather than a slow page
+	checkoutTimeout = 15 * time.Second       // PlaceOrder charges the card, ships and sends the e-mail
 )
 
-func (fe *frontendServer) getCurrencies(ctx context.Context) ([]string, error) {
-	currs, err := pb.NewCurrencyServiceClient(fe.currencySvcConn).
-		GetSupportedCurrencies(ctx, &pb.Empty{})
-	if err != nil {
-		return nil, err
-	}
-	var out []string
-	for _, c := range currs.CurrencyCodes {
-		if _, ok := whitelistedCurrencies[c]; ok {
-			out = append(out, c)
-		}
-	}
-	return out, nil
-}
+// backendTimeout is the deadline of every other call (catalog, currency, cart,
+// recommendation, shipping). A variable only so tests can shorten it.
+var backendTimeout = 3 * time.Second
 
-func (fe *frontendServer) getProducts(ctx context.Context) ([]*pb.Product, error) {
-	resp, err := pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).
-		ListProducts(ctx, &pb.Empty{})
-	return resp.GetProducts(), err
+// callCtx derives the context of one backend call; the caller must call cancel.
+func callCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, backendTimeout)
 }
 
 func (fe *frontendServer) getProduct(ctx context.Context, id string) (*pb.Product, error) {
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	resp, err := pb.NewProductCatalogServiceClient(fe.productCatalogSvcConn).
 		GetProduct(ctx, &pb.GetProductRequest{Id: id})
 	return resp, err
 }
 
 func (fe *frontendServer) getCart(ctx context.Context, userID string) ([]*pb.CartItem, error) {
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	resp, err := pb.NewCartServiceClient(fe.cartSvcConn).GetCart(ctx, &pb.GetCartRequest{UserId: userID})
 	return resp.GetItems(), err
 }
 
 func (fe *frontendServer) emptyCart(ctx context.Context, userID string) error {
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	_, err := pb.NewCartServiceClient(fe.cartSvcConn).EmptyCart(ctx, &pb.EmptyCartRequest{UserId: userID})
 	return err
 }
 
 func (fe *frontendServer) insertCart(ctx context.Context, userID, productID string, quantity int32) error {
+	ctx, cancel := callCtx(ctx)
+	defer cancel()
 	_, err := pb.NewCartServiceClient(fe.cartSvcConn).AddItem(ctx, &pb.AddItemRequest{
 		UserId: userID,
 		Item: &pb.CartItem{
@@ -60,18 +65,10 @@ func (fe *frontendServer) insertCart(ctx context.Context, userID, productID stri
 	return err
 }
 
-func (fe *frontendServer) convertCurrency(ctx context.Context, money *pb.Money, currency string) (*pb.Money, error) {
-	if avoidNoopCurrencyConversionRPC && money.GetCurrencyCode() == currency {
-		return money, nil
-	}
-	return pb.NewCurrencyServiceClient(fe.currencySvcConn).
-		Convert(ctx, &pb.CurrencyConversionRequest{
-			From:   money,
-			ToCode: currency})
-}
-
 func (fe *frontendServer) getShippingQuote(ctx context.Context, items []*pb.CartItem, currency string) (*pb.Money, error) {
-	quote, err := pb.NewShippingServiceClient(fe.shippingSvcConn).GetQuote(ctx,
+	quoteCtx, cancel := callCtx(ctx)
+	defer cancel()
+	quote, err := pb.NewShippingServiceClient(fe.shippingSvcConn).GetQuote(quoteCtx,
 		&pb.GetQuoteRequest{
 			Address: nil,
 			Items:   items})
@@ -83,7 +80,9 @@ func (fe *frontendServer) getShippingQuote(ctx context.Context, items []*pb.Cart
 }
 
 func (fe *frontendServer) getRecommendations(ctx context.Context, userID string, productIDs []string) ([]*pb.Product, error) {
-	resp, err := pb.NewRecommendationServiceClient(fe.recommendationSvcConn).ListRecommendations(ctx,
+	recoCtx, cancel := callCtx(ctx)
+	defer cancel()
+	resp, err := pb.NewRecommendationServiceClient(fe.recommendationSvcConn).ListRecommendations(recoCtx,
 		&pb.ListRecommendationsRequest{UserId: userID, ProductIds: productIDs})
 	if err != nil {
 		return nil, err
@@ -122,7 +121,7 @@ func (fe *frontendServer) getRecommendations(ctx context.Context, userID string,
 }
 
 func (fe *frontendServer) getAd(ctx context.Context, ctxKeys []string) ([]*pb.Ad, error) {
-	ctx, cancel := context.WithTimeout(ctx, time.Millisecond*100)
+	ctx, cancel := context.WithTimeout(ctx, adTimeout)
 	defer cancel()
 
 	resp, err := pb.NewAdServiceClient(fe.adSvcConn).GetAds(ctx, &pb.AdRequest{

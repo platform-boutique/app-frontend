@@ -1,102 +1,123 @@
-<!--
- Copyright 2020 Google LLC
-
- Licensed under the Apache License, Version 2.0 (the "License");
- you may not use this file except in compliance with the License.
- You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
- Unless required by applicable law or agreed to in writing, software
- distributed under the License is distributed on an "AS IS" BASIS,
- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- See the License for the specific language governing permissions and
- limitations under the License.
--->
-
 {{ define "header" }}
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>
-        {{ if $.is_cymbal_brand }}
-        Cymbal Shops
-        {{ else }}
-        Online Boutique
-        {{ end }}
-    </title>
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.1/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-WskhaSGFgHYWDcbwN70/dfYBj47jz9qbsMId/iRN3ewGhXQFZCSftd1LZCfmhktB"
-        crossorigin="anonymous">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Google+Symbols:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
-    <link rel="stylesheet" type="text/css" href="{{ $.baseUrl }}/static/styles/styles.css">
-    <link rel="stylesheet" type="text/css" href="{{ $.baseUrl }}/static/styles/cart.css">
-    <link rel="stylesheet" type="text/css" href="{{ $.baseUrl }}/static/styles/order.css">
-    <link rel="stylesheet" type="text/css" href="{{ $.baseUrl }}/static/styles/bot.css">
-    {{ if $.is_cymbal_brand }}
-    <link rel='shortcut icon' type='image/x-icon' href='{{ $.baseUrl }}/static/favicon-cymbal.ico' />
-    {{ else }}
-    <link rel='shortcut icon' type='image/x-icon' href='{{ $.baseUrl }}/static/favicon.ico' />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <meta name="description" content="{{ $.brand_name }}: {{ $.brand_tagline }}">
+    <title>{{ template "page_title" . }}</title>
+    {{/* Runs before the stylesheets so the chosen theme is applied on first paint (no flash). */}}
+    <script>
+        (function () {
+            var d = document.documentElement;
+            d.className += ' js';
+            try {
+                var t = window.localStorage.getItem('theme');
+                if (t === 'light' || t === 'dark') { d.setAttribute('data-theme', t); }
+            } catch (e) { /* storage blocked: follow the OS setting */ }
+        })();
+    </script>
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/styles.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/cart.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/order.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/browse.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/reviews.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/orders.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/accounts.css">
+    <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/mailbox.css">
+    {{/* htmx 2.0.11, self-hosted (see README): progressive enhancement of the catalogue toolbar and paging. */}}
+    {{/* 4xx/5xx answers are swapped too: the server sends the error message for #page-alert (HX-Retarget). */}}
+    <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true},{"code":"...","swap":true}]}'>
+    <script defer src="{{ $.baseUrl }}/static/js/htmx.min.js"></script>
+    {{/*
+      Grafana Faro (browser RUM), only when FARO_COLLECTOR_URL is set. No inline code: the settings are a JSON
+      block that /static/js/faro-init.js reads, the scripts are plain files (they run in this order, after parsing).
+      The traceparent meta tag is the server span of THIS page; Faro's document-load trace becomes its child.
+    */}}
+    {{ if $.faro }}
+    {{ if $.faro_traceparent }}<meta name="traceparent" content="{{ $.faro_traceparent }}">{{ end }}
+    <script type="application/json" id="faro-config">{{ $.faro }}</script>
+    <script defer src="{{ $.baseUrl }}/static/js/vendor/faro/faro-web-sdk.iife.js"></script>
+    <script defer src="{{ $.baseUrl }}/static/js/vendor/faro/faro-web-tracing.iife.js"></script>
+    <script defer src="{{ $.baseUrl }}/static/js/faro-init.js"></script>
     {{ end }}
+    <link rel="icon" type="image/svg+xml" href="{{ $.baseUrl }}/static/favicon.svg">
 </head>
 
 <body>
-    <header>
-        {{ if $.frontendMessage }}
-        <div class="navbar">
-            <div class="container d-flex justify-content-center">
-                <div class="h-free-shipping">{{ $.frontendMessage }}</div>
-            </div>
-        </div>
-        {{ end }}
-        <div class="navbar sub-navbar">
-            <div class="container d-flex justify-content-between">
-                <a href="{{ $.baseUrl }}/" class="navbar-brand d-flex align-items-center">
-                    {{ if $.is_cymbal_brand }}
-                    <img src="{{ $.baseUrl }}/static/icons/Cymbal_NavLogo.svg" alt="" class="top-left-logo-cymbal" />
-                    {{ else }}
-                    <img src="{{ $.baseUrl }}/static/icons/Hipster_NavLogo.svg" alt="" class="top-left-logo" />
+    <a class="skip-link" href="#main">Skip to content</a>
+    {{ if $.frontendMessage }}
+    <div class="announcement" role="note">{{ $.frontendMessage }}</div>
+    {{ end }}
+    <header class="site-header">
+        <div class="container header-inner">
+            <a href="{{ $.baseUrl }}/" class="brand" aria-label="{{ $.brand_name }} home">
+                {{ template "brand_mark" . }}
+                <span class="brand-name">{{ $.brand_name }}</span>
+            </a>
+
+            <nav class="site-nav" aria-label="Main">
+                <ul>
+                    <li><a href="{{ $.baseUrl }}/">Shop</a></li>
+                    <li class="nav-all"><a href="{{ $.baseUrl }}/#products">All products</a></li>
+                    {{ template "nav_extra" . }}
+                </ul>
+            </nav>
+
+            <div class="header-actions">
+                {{ if $.show_currency }}
+                <form method="POST" class="currency-form" action="{{ $.baseUrl }}/setCurrency" id="currency_form">
+                    <label for="currency_code" class="visually-hidden">Currency</label>
+                    <span class="select-wrap">
+                        <select class="select" name="currency_code" id="currency_code"
+                            onchange="document.getElementById('currency_form').submit();">
+                            {{ range $.currencies }}
+                            <option value="{{.}}" {{ if eq . $.user_currency }}selected="selected"{{ end }}>{{ renderCurrencyLogo . }} {{.}}</option>
+                            {{ end }}
+                        </select>
+                        {{ template "icon_chevron" . }}
+                    </span>
+                    <noscript><button type="submit" class="btn btn-secondary">Set</button></noscript>
+                </form>
+                {{ end }}
+
+                <button type="button" class="icon-btn theme-toggle" id="theme-toggle" aria-label="Switch colour theme">
+                    {{ template "icon_moon" . }}
+                    {{ template "icon_sun" . }}
+                </button>
+
+                {{ if $.orders_enabled }}
+                <a href="{{ $.baseUrl }}/orders" class="icon-btn orders-link" aria-label="Orders">
+                    {{ template "icon_orders" . }}
+                    <span class="orders-link-label" aria-hidden="true">Orders</span>
+                </a>
+                {{ end }}
+
+                {{ if $.accounts_enabled }}
+                {{ if $.user }}
+                <a href="{{ $.baseUrl }}/account" class="icon-btn account-link" aria-label="Your account, {{ $.user.Name }}">
+                    {{ template "icon_user" . }}
+                    <span class="account-link-label" aria-hidden="true">{{ $.user.Name }}</span>
+                </a>
+                {{ else }}
+                <a href="{{ $.baseUrl }}/login" class="icon-btn account-link is-signin">
+                    {{ template "icon_user" . }}
+                    <span class="account-link-label">Sign in</span>
+                </a>
+                {{ end }}
+                {{ end }}
+
+                <a href="{{ $.baseUrl }}/cart" class="icon-btn cart-link"
+                    aria-label="Cart{{ if $.cart_size }}, {{ $.cart_size }} item{{ if ne $.cart_size 1 }}s{{ end }}{{ else }}, empty{{ end }}">
+                    {{ template "icon_cart" . }}
+                    {{ if $.cart_size }}
+                    <span class="cart-count" aria-hidden="true">{{ $.cart_size }}</span>
                     {{ end }}
                 </a>
-                <div class="controls">
-
-                    {{ if $.show_currency }}
-                    <div class="h-controls">
-                        <div class="h-control">
-                            <span class="icon currency-icon"> {{ renderCurrencyLogo $.user_currency}}</span>
-                            <form method="POST" class="controls-form" action="{{ $.baseUrl }}/setCurrency" id="currency_form" >
-                                <select name="currency_code" onchange="document.getElementById('currency_form').submit();">
-                                        {{range $.currencies}}
-                                    <option value="{{.}}" {{if eq . $.user_currency}}selected="selected"{{end}}>{{.}}</option>
-                                    {{end}}
-                                </select>
-                            </form>
-                            <img src="{{ $.baseUrl }}/static/icons/Hipster_DownArrow.svg" alt="" class="icon arrow" />
-                        </div>
-                    </div>
-                    {{ end }}
-
-                    {{ if $.assistant_enabled }}
-                    <a href="{{ $.baseUrl }}/assistant" class="cart-link">
-                      <img src="{{ $.baseUrl }}/static/icons/Hipster_WandIcon.svg" style="width: 22px; height: 22px;" alt="Assistant icon" class="logo" title="Assistant" />
-                    </a>
-                    {{ end }}
-
-                    <a href="{{ $.baseUrl }}/cart" class="cart-link">
-                        <img src="{{ $.baseUrl }}/static/icons/Hipster_CartIcon.svg" alt="Cart icon" class="logo" title="Cart" />
-                        {{ if $.cart_size }}
-                        <span class="cart-size-circle">{{$.cart_size}}</span>
-                        {{ end }}
-                    </a>
-                </div>
             </div>
         </div>
-
     </header>
-    {{end}}
+    <div id="page-alert" class="container page-alert" role="alert"></div>
+{{ end }}

@@ -25,3 +25,13 @@ Thumbs.db
 
 # Docker
 .docker/
+
+# Agent / session notes: never committed
+STATUS.md
+NOTES*.md
+PLAN.md
+.claude/
+
+# Key material
+*.pem
+*.key
