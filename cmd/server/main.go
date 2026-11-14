@@ -201,41 +201,7 @@ func main() {
 		mailboxEnabled = true
 	}
 
-	// --- Router ---
-	r := mux.NewRouter()
-	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
-	r.HandleFunc(baseUrl+"/product/{id}", svc.productHandler).Methods(http.MethodGet, http.MethodHead)
-	r.HandleFunc(baseUrl+"/product/{id}/reviews", svc.postReviewHandler).Methods(http.MethodPost)
-	r.HandleFunc(baseUrl+"/cart", svc.viewCartHandler).Methods(http.MethodGet, http.MethodHead)
-	r.HandleFunc(baseUrl+"/cart", svc.addToCartHandler).Methods(http.MethodPost)
-	r.HandleFunc(baseUrl+"/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)
-	r.HandleFunc(baseUrl+"/setCurrency", svc.setCurrencyHandler).Methods(http.MethodPost)
-	r.HandleFunc(baseUrl+"/logout", svc.logoutHandler).Methods(http.MethodGet)
-	svc.accountRoutes(r)
-	r.HandleFunc(baseUrl+"/orders", svc.ordersHistoryHandler).Methods(http.MethodGet, http.MethodHead)
-	r.HandleFunc(baseUrl+"/orders/{id}", svc.orderTrackingHandler).Methods(http.MethodGet, http.MethodHead)
-	r.HandleFunc(baseUrl+"/emails", svc.emailsHandler).Methods(http.MethodGet, http.MethodHead)
-	r.HandleFunc(baseUrl+"/emails/{id}", svc.emailHandler).Methods(http.MethodGet, http.MethodHead)
-	r.HandleFunc(baseUrl+"/cart/checkout", svc.placeOrderHandler).Methods(http.MethodPost)
-	r.HandleFunc(baseUrl+"/ads/{id}/click", svc.adClickHandler).Methods(http.MethodGet)
-	static := newStaticServer(http.Dir("./static/"))
-	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", static))
-	r.Handle(baseUrl+"/favicon.ico", static.file("/favicon.svg")) // the logo; browsers ask for it when a page has no <link rel=icon>
-	r.HandleFunc(baseUrl+"/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "User-agent: *\nDisallow: /") })
-	r.HandleFunc(baseUrl+"/_healthz", livenessHandler) // the original probe path (compose, e2e tests): same answer as /healthz
-	r.HandleFunc(baseUrl+"/healthz", livenessHandler)
-	r.HandleFunc(baseUrl+"/readyz", svc.readinessHandler)
-	r.HandleFunc(baseUrl+"/version", versionHandler)
-	r.HandleFunc(baseUrl+"/product-meta/{ids}", svc.getProductByID).Methods(http.MethodGet)
-
-	// Wrap all routes with Prometheus metrics middleware
-	wrapRoutes(r)
-
-	var handler http.Handler = r
-	handler = svc.withUser(handler)                    // who is asking: shop_auth cookie -> user-service GetSession
-	handler = &logHandler{log: log, next: handler}     // structured logging
-	handler = ensureSessionID(handler)                 // session ID cookie
-	handler = otelhttp.NewHandler(handler, "frontend") // OTel tracing
+	handler := newHandler(svc, log)
 
 	srvPort := listenPort()
 	addr := os.Getenv("LISTEN_ADDR")
@@ -269,6 +235,47 @@ func main() {
 		_ = srv.Close()
 	}
 	log.Info("stopped")
+}
+
+// newHandler is the whole HTTP stack: the router with its metrics wrappers, then the middlewares
+// (user, logging, session cookie) and the OTel server span outermost. A function so tests can run
+// requests through exactly what main serves.
+func newHandler(svc *frontendServer, log *logrus.Logger) http.Handler {
+	r := mux.NewRouter()
+	r.HandleFunc(baseUrl+"/", svc.homeHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/product/{id}", svc.productHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/product/{id}/reviews", svc.postReviewHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl+"/cart", svc.viewCartHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/cart", svc.addToCartHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl+"/cart/empty", svc.emptyCartHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl+"/setCurrency", svc.setCurrencyHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl+"/logout", svc.logoutHandler).Methods(http.MethodGet)
+	svc.accountRoutes(r)
+	r.HandleFunc(baseUrl+"/orders", svc.ordersHistoryHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/orders/{id}", svc.orderTrackingHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/emails", svc.emailsHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/emails/{id}", svc.emailHandler).Methods(http.MethodGet, http.MethodHead)
+	r.HandleFunc(baseUrl+"/cart/checkout", svc.placeOrderHandler).Methods(http.MethodPost)
+	r.HandleFunc(baseUrl+"/ads/{id}/click", svc.adClickHandler).Methods(http.MethodGet)
+	static := newStaticServer(http.Dir("./static/"))
+	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", static))
+	r.Handle(baseUrl+"/favicon.ico", static.file("/favicon.svg")) // the logo; browsers ask for it when a page has no <link rel=icon>
+	r.HandleFunc(baseUrl+"/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "User-agent: *\nDisallow: /") })
+	r.HandleFunc(baseUrl+"/_healthz", livenessHandler) // the original probe path (compose, e2e tests): same answer as /healthz
+	r.HandleFunc(baseUrl+"/healthz", livenessHandler)
+	r.HandleFunc(baseUrl+"/readyz", svc.readinessHandler)
+	r.HandleFunc(baseUrl+"/version", versionHandler)
+	r.HandleFunc(baseUrl+"/product-meta/{ids}", svc.getProductByID).Methods(http.MethodGet)
+
+	// Wrap all routes with Prometheus metrics middleware
+	wrapRoutes(r)
+
+	var handler http.Handler = r
+	handler = svc.withUser(handler)                                                              // who is asking: shop_auth cookie -> user-service GetSession
+	handler = &logHandler{log: log, next: handler}                                               // structured logging
+	handler = ensureSessionID(handler)                                                           // session ID cookie
+	handler = otelhttp.NewHandler(handler, "frontend", otelhttp.WithSpanNameFormatter(spanName)) // OTel tracing (see spanName)
+	return handler
 }
 
 // drainTimeout is how long in-flight requests get after SIGTERM; with the 4 s telemetry flush

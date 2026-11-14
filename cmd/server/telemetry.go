@@ -7,6 +7,8 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ---------------------------------------------------------------------------
@@ -43,9 +45,28 @@ func initMetrics() {
 	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight, currencyCacheTotal)
 }
 
+// spanName is the name otelhttp gives the server span when the request arrives: the method only.
+// The router has not run yet, so the route is unknown; metricsMiddleware renames the span to
+// "METHOD route template" once the route matched. A request no route matches (a 404, a scanner
+// probing paths) therefore stays "GET" instead of becoming one span name per raw path (OBS-10:
+// span names are low-cardinality).
+func spanName(_ string, r *http.Request) string { return r.Method }
+
+// nameSpanAfterRoute renames the server span of the request to "METHOD <route template>" and tags it
+// with http.route. The template (for example /product/{id}), never the raw path, is what is used.
+func nameSpanAfterRoute(r *http.Request, route string) {
+	span := trace.SpanFromContext(r.Context())
+	if !span.IsRecording() {
+		return
+	}
+	span.SetName(r.Method + " " + route)
+	span.SetAttributes(attribute.String("http.route", route))
+}
+
 // metricsMiddleware wraps each route and records Prometheus HTTP metrics.
 func metricsMiddleware(next http.Handler, route string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nameSpanAfterRoute(r, route)
 		start := time.Now()
 		rr := &responseRecorder{w: w}
 		httpRequestsInFlight.Inc()

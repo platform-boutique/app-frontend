@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"frontend/internal/obs"
 )
@@ -51,6 +53,8 @@ func (lh *logHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The id goes into the context as well, where the log formatter finds it (request_id) and the gRPC
 	// client interceptor forwards it (x-request-id) to the next service.
 	ctx = obs.WithRequestID(ctx, requestID.String())
+	// The server span carries the id too, so a trace found in Tempo leads to the log lines (and the error page footer) of that request.
+	trace.SpanFromContext(ctx).SetAttributes(attribute.String("request_id", requestID.String()))
 
 	start := time.Now()
 	rr := &responseRecorder{w: w}
