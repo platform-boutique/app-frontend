@@ -54,6 +54,35 @@ func TestHealthz_ReturnsOK(t *testing.T) {
 	}
 }
 
+func TestProbeEndpoints(t *testing.T) {
+	for _, path := range []string{"/healthz", "/version"} {
+		resp, err := defaultClient.Get(baseURL() + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s = %d, want 200", path, resp.StatusCode)
+		}
+		if len(resp.Cookies()) != 0 {
+			t.Errorf("GET %s set a cookie: probes have no session", path)
+		}
+	}
+}
+
+// /readyz needs the backends, so it is only checked where they run.
+func TestReadyz_ReadyWithBackends(t *testing.T) {
+	skipIfDownstream(t)
+	resp, err := defaultClient.Get(baseURL() + "/readyz")
+	if err != nil {
+		t.Fatalf("GET /readyz: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET /readyz = %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestRobotsTxt_ReturnsOK(t *testing.T) {
 	resp, err := defaultClient.Get(baseURL() + "/robots.txt")
 	if err != nil {

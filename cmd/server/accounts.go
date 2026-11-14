@@ -204,7 +204,11 @@ func (fe *frontendServer) withUser(next http.Handler) http.Handler {
 
 // isStaticPath: assets and probes never need to know who is asking.
 func isStaticPath(p string) bool {
-	return strings.HasPrefix(p, baseUrl+"/static/") || p == baseUrl+"/_healthz" || p == baseUrl+"/robots.txt" || p == baseUrl+"/favicon.ico"
+	switch p {
+	case baseUrl + "/_healthz", baseUrl + "/healthz", baseUrl + "/readyz", baseUrl + "/version", baseUrl + "/robots.txt", baseUrl + "/favicon.ico":
+		return true
+	}
+	return strings.HasPrefix(p, baseUrl+"/static/")
 }
 
 // identityUnavailable answers 503 for a page that cannot be right without knowing the visitor
