@@ -12,7 +12,7 @@ Part of the [platform-demo](https://github.com/platform-boutique) platform — m
 | **Image** | `mladenovskistefan/frontend` |
 | **Protocol / port** | HTTP/1.1 on `8080` |
 | **Metrics** | Prometheus `/metrics` on `9090` (`METRICS_PORT`), scraped by Alloy; the same registry is also pushed over OTLP/gRPC when an endpoint is set |
-| **Health** | `GET /_healthz` → `200 ok` — static, no dependency checks |
+| **Health** | `GET /healthz` (liveness, `200 ok`, no dependency checks), `GET /readyz` (readiness: `200 ok` while the gRPC connections to product-catalog, currency and cart are READY, else `503 not ready: <names>`; 1.5 s limit), `GET /version` (JSON `service`, `version`, `commit`, `build_time`); `GET /_healthz` is the original liveness path and answers like `/healthz`. `frontend healthcheck` is the container probe |
 | **State** | None server-side; session id lives in a browser cookie, carts live in `cart-service` |
 | **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service`; optional: `review-service` (ratings and reviews, see below), `order-service` (order history and tracking, see "Orders"), `user-service` (accounts, see "Accounts") |
 | **Called by** | Browsers / ingress / load generators |
@@ -45,7 +45,10 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
 | `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`). GET/HEAD only. Never sets a cookie. Every response has `Cache-Control` (`public, max-age=86400` for `img/` and `js/vendor/`, `public, max-age=300, must-revalidate` for the rest: nothing is fingerprinted, so nothing is `immutable`), `ETag` and `Last-Modified` (`304` on `If-None-Match` / `If-Modified-Since`) and `X-Content-Type-Options: nosniff`. Text types of 256 bytes or more (css, js, svg, json, html, txt, xml) are sent gzip-compressed to clients that accept it (`Vary: Accept-Encoding`, the compressed body is kept in memory, at most 64 files, and recomputed when size or mtime change; the ETag of the gzip variant ends in `-gzip`); images (webp) are never compressed. Brotli is not offered (would need a new dependency). Directories are `404` (no listing, no index) |
 | `/favicon.ico` | GET | The logo (`static/favicon.svg`, `image/svg+xml`) with the `/static/` headers and no cookie |
-| `/_healthz` | GET | Liveness/readiness (`ok`) |
+| `/healthz` | GET | Liveness: `200 ok`, no dependency checked |
+| `/readyz` | GET | Readiness: `200 ok` when the connections to product-catalog, currency and cart are READY, else `503` with `not ready: <backend names>` (error text of the connection is never shown). Waits at most 1.5 s, starts the connection if the channel is idle. The other backends are left out on purpose: a failure of recommendation, ad, shipping, checkout or an optional service degrades or fails single pages, and taking every pod out of the Service would turn that into a total outage |
+| `/version` | GET | JSON `{"service","version","commit","build_time"}`; version from `SERVICE_VERSION`, ldflags or the embedded VCS data, `build_time` from ldflags `obs.BuildTime`, else the VCS commit time, else `unknown` |
+| `/_healthz` | GET | Liveness (`ok`), kept for compose, the e2e tests and `tests/faro/run.sh`; same handler as `/healthz` |
 | `/robots.txt` | GET | `Disallow: /` |
 
 **Supported currencies** (whitelist in code, intersected with what `currency-service` offers): `USD`, `EUR`, `CAD`, `JPY`, `GBP`, `TRY`. Default is `USD`.
@@ -64,7 +67,7 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | Emails / email detail | order (`ListOrders` / `GetOrder`, 1.5 s deadline), then mailbox (`ListOrderEmails` / `GetOrderEmail`, 1.5 s deadline) and the cached catalog category list for the header navigation |
 | Order tracking, extra | mailbox (ONE `ListOrderEmails` for the order, 1 s deadline, failures ignored) for the "View confirmation email" button |
 | Register / sign in | user (`Register` / `Login`, 5 s deadline), then order (`ClaimOrders`, 1.5 s) and cart (`GetCart`, product-catalog `GetProduct` per line, inventory ONE `GetStock` for all lines, `AddItem`, `EmptyCart`) |
-| Every request with a `shop_auth` cookie | user (`GetSession`, 1 s deadline, once per request; not for `/static`, `/favicon.ico`, `/_healthz`, `/robots.txt`) |
+| Every request with a `shop_auth` cookie | user (`GetSession`, 1 s deadline, once per request; not for `/static`, `/favicon.ico`, `/healthz`, `/_healthz`, `/readyz`, `/version`, `/robots.txt`) |
 | Account | nothing of its own: the identity comes from the request |
 
 ### Errors
@@ -90,7 +93,7 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 
 | Cookie | Purpose | Flags |
 |---|---|---|
-| `shop_session-id` | random UUID per visitor; used as the cart `user_id` | `HttpOnly`, **`Secure`**, `SameSite=Strict`, 48 h; set by pages only: never on `/static/*`, `/favicon.ico`, `/_healthz`, `/robots.txt` |
+| `shop_session-id` | random UUID per visitor; used as the cart `user_id` | `HttpOnly`, **`Secure`**, `SameSite=Strict`, 48 h; set by pages only: never on `/static/*`, `/favicon.ico`, `/healthz`, `/_healthz`, `/readyz`, `/version`, `/robots.txt` |
 | `shop_currency` | chosen display currency | `HttpOnly`, **`Secure`**, `SameSite=Strict`, 48 h |
 | `shop_auth` | the sign-in token (opaque, from user-service); only there when signed in; never rendered into a page and never logged | `HttpOnly`, **`Secure`**, `SameSite=Strict`, `Path=/`, `Max-Age` = what is left of the token's life (14 days at user-service's default) |
 
@@ -143,7 +146,7 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 Notes:
 
 - All seven `*_ADDR` variables marked **Yes** in the table are **mandatory** (the others, e.g. `REVIEW_SERVICE_ADDR`, `INVENTORY_SERVICE_ADDR` and `EMAIL_SERVICE_ADDR`, are optional): a missing one stops the process at startup with one JSON error line (`invalid configuration`) and exit code 1. They are plain `host:port` (no scheme). Use FQDNs (`svc.<namespace>.svc.cluster.local:<port>`) if services live in other namespaces.
-- gRPC connections use `grpc.NewClient` (lazy): the pod starts and `/_healthz` returns `ok` even if every backend is down. Page loads then fail with a 503 or 500 error page until backends return (each backend call times out after at most 3 s, see "Deadlines").
+- gRPC connections use `grpc.NewClient` (lazy): the pod starts and `/healthz` returns `ok` even if every backend is down (`/readyz` answers `503` while the catalogue, currency or cart service is unreachable). Page loads then fail with a 503 or 500 error page until backends return (each backend call times out after at most 3 s, see "Deadlines").
 - The earlier README listed `ENV_PLATFORM`; it is **not read by the code**.
 - Log level comes from `LOG_LEVEL` (default `info`). It used to be hard-coded to `debug`: the per-request `request started` line and the handlers' debug lines are now only visible with `LOG_LEVEL=debug`; the per-request access line `request complete` stays at `info`.
 - Traces, metrics and logs share one OTLP/gRPC endpoint (Alloy); profiles go to Pyroscope (via Alloy). Metrics are also scraped from `/metrics` on `METRICS_PORT`. `service.instance.id` is the pod hostname, so replicas stay distinct in Mimir.
@@ -284,7 +287,7 @@ Multi-stage [`Dockerfile`](Dockerfile):
 - **Entrypoint:** `./frontend` (working dir `/app` — templates and static files are loaded by relative path, so don't change the working dir).
 - **User:** numeric `USER 10001:10001` (`appuser`/`appgroup`, created with these fixed ids; `id` in the container prints `uid=10001(appuser) gid=10001(appgroup)`). Build args `SERVICE_VERSION` (default `dev`) and `SERVICE_COMMIT` (default `unknown`) set the OCI labels `version`/`revision` (plus `source`, `licenses=Apache-2.0`) and the ENV of the same names.
 - **EXPOSE:** `8080`.
-- **Docker `HEALTHCHECK`:** `wget -qO- http://localhost:${PORT:-8080}/_healthz`. Alpine's busybox `wget` is in the image, so an exec probe is possible, but `httpGet` is simpler.
+- **Docker `HEALTHCHECK`:** exec form `["/app/frontend", "healthcheck"]` (no shell, no `wget`): the subcommand does `GET http://127.0.0.1:${PORT:-8080}${BASE_URL}/healthz` with a 3 s limit and exits 0 only for `200`. Run locally: `frontend healthcheck`.
 - **Image size:** 76.7 MB for `platform-demo/frontend:local` (`docker images`, the local compose build of this branch before the audit fixes; `static/` alone is 17 MB because of the product photos). The older ~15 MB figure predates them. Not rebuilt after the fixes.
 - The repo root may contain a compiled `server` binary (git-ignored) — it is not used by the image.
 
@@ -305,19 +308,19 @@ Multi-stage [`Dockerfile`](Dockerfile):
 
 ```yaml
 startupProbe:
-  httpGet: { path: /_healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 8080 }
   periodSeconds: 2
   failureThreshold: 15
 readinessProbe:
-  httpGet: { path: /_healthz, port: 8080 }
+  httpGet: { path: /readyz, port: 8080 }
   periodSeconds: 5
 livenessProbe:
-  httpGet: { path: /_healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 8080 }
   periodSeconds: 10
   failureThreshold: 3
 ```
 
-Health is static, so readiness doesn't reflect backend health. Pod startup is near-instant.
+`/healthz` is static; `/readyz` reflects the three backends every page needs (catalogue, currency, cart). With `BASE_URL` set, the paths carry that prefix. Pod startup is near-instant. Not run in a cluster: the paths are new, the chart in `platform-demo-helm` still has to be switched.
 
 **Security context**
 
@@ -455,7 +458,9 @@ docker run --rm -p 8080:8080 -p 9090:9090 \
 
 go test ./...
 
-curl -s localhost:8080/_healthz            # ok
+curl -s localhost:8080/healthz             # ok
+curl -s localhost:8080/readyz              # ok, or 503 "not ready: ..." while a backend is down
+curl -s localhost:8080/version            # {"service":"frontend","version":...}
 curl -s localhost:9090/metrics | grep http_requests_total
 ```
 
@@ -466,6 +471,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 ```
 ├── cmd/server/
 │   ├── main.go          # entrypoint: env wiring, gRPC dials, router, middleware chain, HTTP server
+│   ├── health.go        # /healthz, /readyz, /version and the `healthcheck` subcommand
 │   ├── handlers.go      # page handlers (home, product, cart, checkout, currency, logout, product-meta)
 │   ├── rpc.go           # gRPC client helpers for each backend, with their deadlines
 │   ├── ads.go           # ad context keys, click link, /ads/{id}/click with the local-path redirect check

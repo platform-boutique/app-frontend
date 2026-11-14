@@ -27,7 +27,9 @@ docker run --rm -p 8080:8080 -p 9090:9090 \
 go test ./...
 python3 tools/check-contrast.py      # WCAG contrast of the colour tokens, both themes; exits 1 on a failure
 
-curl -s localhost:8080/_healthz            # ok
+curl -s localhost:8080/healthz             # ok
+curl -s localhost:8080/readyz              # ok, or 503 "not ready: ..." while a backend is down
+curl -s localhost:8080/version            # {"service":"frontend","version":...}
 curl -s localhost:9090/metrics | grep http_requests_total
 ```
 
@@ -38,6 +40,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 ```
 ├── cmd/server/
 │   ├── main.go          # entrypoint: env wiring, gRPC dials, router, middleware chain, HTTP server
+│   ├── health.go        # /healthz, /readyz, /version and the `healthcheck` subcommand
 │   ├── handlers.go      # page handlers (home, product, cart, checkout, currency, logout, product-meta)
 │   ├── rpc.go           # gRPC client helpers for each backend
 │   ├── accounts.go      # accounts: shop_auth middleware, register/login/account/logout, claim + cart merge, safe `next`
