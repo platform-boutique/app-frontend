@@ -1,6 +1,10 @@
 # ---- Build stage ----
 FROM golang:1.26-alpine AS builder
 
+# Build identity, linked into internal/obs (read by the service at start)
+ARG SERVICE_VERSION=dev
+ARG SERVICE_COMMIT=unknown
+
 ENV CGO_ENABLED=0
 ENV GOOS=linux
 
@@ -14,7 +18,9 @@ RUN go mod download
 
 # Build
 COPY . .
-RUN go build -ldflags="-s -w" -o /bin/frontend ./cmd/server
+RUN go build \
+    -ldflags="-s -w -X frontend/internal/obs.Version=${SERVICE_VERSION} -X frontend/internal/obs.Commit=${SERVICE_COMMIT}" \
+    -o /bin/frontend ./cmd/server
 
 # ---- Runtime stage ----
 FROM alpine:3.24 AS runtime
