@@ -14,7 +14,7 @@ go run ./cmd/server          # http://localhost:8080
 
 # via Docker
 docker build -t frontend .
-docker run --rm -p 8080:8080 -p 9464:9464 \
+docker run --rm -p 8080:8080 -p 9090:9090 \
   -e PRODUCT_CATALOG_SERVICE_ADDR=product-catalog-service:3550 \
   -e CURRENCY_SERVICE_ADDR=currency-service:7000 \
   -e CART_SERVICE_ADDR=cart-service:7070 \
@@ -28,7 +28,7 @@ go test ./...
 python3 tools/check-contrast.py      # WCAG contrast of the colour tokens, both themes; exits 1 on a failure
 
 curl -s localhost:8080/_healthz            # ok
-curl -s localhost:9464/metrics | grep http_requests_total
+curl -s localhost:9090/metrics | grep http_requests_total
 ```
 
 Browsing to `http://localhost:8080` works with the `Secure` cookies because browsers treat `localhost` as a secure context.

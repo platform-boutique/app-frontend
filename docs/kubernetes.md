@@ -7,7 +7,7 @@
 | Name | Port | Protocol | Expose via Service? |
 |---|---|---|---|
 | `http` | `8080` | TCP (HTTP/1.1) | Yes — Service port `80` → `8080`; front it with an Ingress / Gateway / LoadBalancer |
-| `metrics` | `9464` | TCP (HTTP/1.1) | Optional (debugging/pprof). Not scraped by default — metrics are pushed over OTLP |
+| `metrics` | `9090` | TCP (HTTP/1.1) | Prometheus `/metrics` (was `9464`; a chart that still declares or probes `9464` must change). Also pushed over OTLP |
 
 **Exposure:** serve over **HTTPS** (see cookie gotcha). Ingress `Service` target is `frontend:80` → pod `8080`. If you use a sub-path ingress, also set `BASE_URL` to match. Set the NetworkPolicy so that only the ingress controller can reach `8080`.
 
@@ -51,7 +51,7 @@ resources:
 
 **Config / secrets:** no secrets. Service addresses, observability endpoints and branding vars belong in values → env.
 
-**Telemetry:** pushed, not scraped — OTLP/gRPC to Alloy (`global.monitoring.otlpEndpoint`), profiles to Alloy `:4040`. Metrics carry `job="frontend"` and `instance=<pod>`; no scrape annotations or `ServiceMonitor` are needed.
+**Telemetry:** OTLP/gRPC to Alloy (`global.monitoring.otlpEndpoint`), profiles to Alloy `:4040`. Metrics carry `job="frontend"` and `instance=<pod>`; the same series are also available by scraping the `metrics` port (`9090`); whether the Helm chart declares a scrape annotation or `ServiceMonitor` for it was not checked.
 
 **Helm chart:** [`platform-demo-helm/frontend`](https://github.com/platform-boutique/platform-demo-helm/tree/main/frontend) (built on the shared `platform-common` library chart). It ships with HA defaults — 2 replicas,
 HPA, PodDisruptionBudget, topology spread, NetworkPolicy, restricted pod security context, probes and the full env contract (see Configuration) —

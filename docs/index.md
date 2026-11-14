@@ -38,7 +38,7 @@ flowchart LR
 | **Language / runtime** | Go 1.26 (`gorilla/mux`, `html/template`), static binary |
 | **Image** | `mladenovskistefan/frontend` |
 | **Protocol / port** | HTTP/1.1 on `8080` |
-| **Metrics** | Pushed over OTLP/gRPC (Prometheus registry bridged into OpenTelemetry); `/metrics` on `9464` is still served for debugging |
+| **Metrics** | Prometheus `/metrics` on `9090` (`METRICS_PORT`), scraped by Alloy; the same registry is also pushed over OTLP/gRPC when an endpoint is set |
 | **Health** | `GET /_healthz` → `200 ok` — static, no dependency checks |
 | **State** | None server-side; session id lives in a browser cookie, carts live in `cart-service` |
 | **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service` |

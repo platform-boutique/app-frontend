@@ -11,7 +11,7 @@ Part of the [platform-demo](https://github.com/platform-boutique) platform — m
 | **Language / runtime** | Go 1.26 (`gorilla/mux`, `html/template`), static binary |
 | **Image** | `mladenovskistefan/frontend` |
 | **Protocol / port** | HTTP/1.1 on `8080` |
-| **Metrics** | Pushed over OTLP/gRPC (Prometheus registry bridged into OpenTelemetry); `/metrics` on `9464` is still served for debugging |
+| **Metrics** | Prometheus `/metrics` on `9090` (`METRICS_PORT`), scraped by Alloy; the same registry is also pushed over OTLP/gRPC when an endpoint is set |
 | **Health** | `GET /_healthz` → `200 ok` — static, no dependency checks |
 | **State** | None server-side; session id lives in a browser cookie, carts live in `cart-service` |
 | **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service`; optional: `review-service` (ratings and reviews, see below), `order-service` (order history and tracking, see "Orders"), `user-service` (accounts, see "Accounts") |
@@ -114,35 +114,41 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 | `REVIEW_SERVICE_ADDR` | No | `review-service:8084` | `host:port` of review-service (gRPC). Optional: if it is unreachable the pages render without stars and without reviews (see "Ratings and reviews"). Set to an empty string to switch ratings and reviews off completely |
 | `PORT` | No | `8080` | HTTP listen port |
 | `LISTEN_ADDR` | No | `` (all interfaces) | Bind address; leave empty in containers |
-| `METRICS_PORT` | No | `9464` | Prometheus listener port |
 | `BASE_URL` | No | `` | URL path prefix when served under a sub-path (e.g. `/shop`); all routes and static URLs move under it |
 | `BRAND_NAME` | No | `Everly` | Store name shown in the header, footer, page title and home hero (working name; the one place to rename the store) |
 | `BRAND_TAGLINE` | No | `Everyday things, thoughtfully chosen.` | Tagline shown in the page title, the home hero headline and the footer |
 | `FRONTEND_MESSAGE` | No | — | Optional announcement bar text shown above the header on every page |
 | `ENABLE_SINGLE_SHARED_SESSION` | No | `false` | `true` makes every new visitor share one hard-coded session id (cart shared by everyone). Demo/test workaround only |
 | `TEMPLATE_PATH` | No | `templates/*.html` | Glob of HTML templates (relative to `/app`) |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs** (scheme required), e.g. `http://alloy.monitoring.svc.cluster.local:4317`. Telemetry is on iff this is set (and `OTEL_SDK_DISABLED` is not `true`). The old `COLLECTOR_SERVICE_ADDR` fallback was removed |
-| `OTEL_SDK_DISABLED` | No | unset | `true` (case-insensitive, as in the OTel spec) forces all telemetry off even if an endpoint is set; any other value, including `1`, does nothing. Does not affect profiling or Faro |
-| `ENABLE_TRACING` | No | — | Legacy switch: `0` forces all telemetry off even if an endpoint is set (it is no longer needed to turn telemetry on) |
-| `OTEL_METRIC_EXPORT_INTERVAL` | No | `15000` | Milliseconds between metric pushes (Go also accepts durations such as `15s`) |
-| `OTEL_SERVICE_NAME` | No | `frontend` | `service.name` — becomes the Prometheus `job` and the Loki `service_name`; keep the default, dashboards depend on it |
-| `PYROSCOPE_ADDR` | No | unset (profiling off) | Profiling is on iff this is set (no default address any more). Profiles use the Pyroscope SDK push protocol (**not** OTLP). Point it at Alloy (`http://alloy.monitoring.svc.cluster.local:4040`), which forwards to Pyroscope, or directly at Pyroscope |
-| `ENABLE_PROFILING` | No | — | Legacy switch: `0` forces profiling off even if `PYROSCOPE_ADDR` is set. `1` alone no longer starts anything |
+| `METRICS_PORT` | No | `9090` | Port of the Prometheus `/metrics` endpoint (scraped by Alloy). A value that is not a port falls back to `9090` with a warning |
+| `PPROF_ADDR` | No | unset (no pprof) | `host:port` of a separate pprof listener, e.g. `127.0.0.1:6060`. Off unless set; never expose it. pprof is never served on the metrics port |
+| `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn` or `error`; anything else falls back to `info` with a warning |
+| `SERVICE_VERSION` | No | build info, else `dev` | `service.version`, the `version` log field and the `build_info` label. Fallbacks in order: ldflags `-X <module>/internal/obs.Version=...` (and `.Commit=`, `.BuildTime=`), the VCS revision Go embeds in the binary (12 characters, `-dirty` if modified), `dev` |
+| `DEPLOYMENT_ENVIRONMENT` | No | `local` | `deployment.environment` on every signal and the Pyroscope tag `environment` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs**, e.g. `http://alloy:4317`. Telemetry is on only if this is a valid absolute http(s) URL; empty or malformed means off (one warning, never a crash). The legacy `COLLECTOR_SERVICE_ADDR` and `ENABLE_TRACING` are no longer read |
+| `OTEL_SDK_DISABLED` | No | unset | `true` (trimmed, case-insensitive) forces everything off: OTLP export and profiling, even if an endpoint or `PYROSCOPE_ADDR` is set |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | No | `grpc` | Documented knob; only gRPC is implemented, the value is not read |
+| `OTEL_TRACES_SAMPLER`, `OTEL_TRACES_SAMPLER_ARG` | No | SDK default (`parentbased_always_on`) | Standard OpenTelemetry sampler variables, read by the SDK (tested for `always_on` and `always_off`) |
+| `OTEL_RESOURCE_ATTRIBUTES` | No | unset | Extra resource attributes (`k=v,...`); applied after the defaults, so they can override them |
+| `OTEL_SERVICE_NAME` | No | `frontend` | `service.name`; keep the default, dashboards depend on it |
+| `OTEL_METRIC_EXPORT_INTERVAL` | No | `15000` | Milliseconds between metric pushes (also accepts durations such as `15s`) |
+| `PYROSCOPE_ADDR` | No | unset (profiling off) | Pyroscope URL (SDK push protocol, not OTLP). The only switch: no default address, `ENABLE_PROFILING=1` alone starts nothing |
+| `ENABLE_PROFILING` | No | unset | `0` forces profiling off even with `PYROSCOPE_ADDR`; any other value changes nothing |
 | `FARO_COLLECTOR_URL` | No | empty (Faro off) | Grafana Faro receiver URL **as the visitor's browser reaches it**, e.g. `https://faro.example.com/collect` (Alloy `faro.receiver`). Only `http://` or `https://`, a host, no credentials; anything else stops the process at start with a message. Empty: no Faro script, config block or `traceparent` meta tag is rendered. See the README section "RUM (Grafana Faro)" |
 | `FARO_APP_NAME` | No | `everly-frontend` | Faro `app.name` (at most 128 characters) |
-| `FARO_APP_VERSION` | No | `dev` | Faro `app.version` (the service reports no build version of its own) |
+| `FARO_APP_VERSION` | No | `SERVICE_VERSION`, else build info, else `dev` | Faro `app.version` (the same version the server reports) |
 | `FARO_ENV` | No | `local` | Faro `app.environment` |
 | `FARO_SESSION_SAMPLE_RATE` | No | `1` | Share of browser sessions that report, a number from 0 to 1 (checked at start) |
 
 Notes:
 
-- All seven `*_ADDR` variables marked **Yes** in the table are **mandatory** (the others, e.g. `REVIEW_SERVICE_ADDR`, `INVENTORY_SERVICE_ADDR` and `EMAIL_SERVICE_ADDR`, are optional): a missing one makes the process `panic` at startup. They are plain `host:port` (no scheme). Use FQDNs (`svc.<namespace>.svc.cluster.local:<port>`) if services live in other namespaces.
+- All seven `*_ADDR` variables marked **Yes** in the table are **mandatory** (the others, e.g. `REVIEW_SERVICE_ADDR`, `INVENTORY_SERVICE_ADDR` and `EMAIL_SERVICE_ADDR`, are optional): a missing one stops the process at startup with one JSON error line (`invalid configuration`) and exit code 1. They are plain `host:port` (no scheme). Use FQDNs (`svc.<namespace>.svc.cluster.local:<port>`) if services live in other namespaces.
 - gRPC connections use `grpc.NewClient` (lazy): the pod starts and `/_healthz` returns `ok` even if every backend is down. Page loads then fail with a 503 or 500 error page until backends return (each backend call times out after at most 3 s, see "Deadlines").
 - The earlier README listed `ENV_PLATFORM`; it is **not read by the code**.
-- Log level is hard-coded to `debug` (JSON via `logrus`) — expect chatty logs; there is no env switch.
-- Telemetry is **pushed**, not scraped: traces, metrics and logs share one OTLP/gRPC endpoint (Alloy); profiles go to Pyroscope (via Alloy). `service.instance.id` is the pod hostname, so replicas stay distinct in Mimir.
-- A Prometheus `/metrics` endpoint is still served on `METRICS_PORT` for debugging, but nothing has to scrape it — the same registry is bridged into OTLP, so metric names are unchanged.
-- Logs: the `logrus` logger keeps writing JSON to stdout and additionally mirrors every record over OTLP (with trace ids when a context is attached).
+- Log level comes from `LOG_LEVEL` (default `info`). It used to be hard-coded to `debug`: the per-request `request started` line and the handlers' debug lines are now only visible with `LOG_LEVEL=debug`; the per-request access line `request complete` stays at `info`.
+- Traces, metrics and logs share one OTLP/gRPC endpoint (Alloy); profiles go to Pyroscope (via Alloy). Metrics are also scraped from `/metrics` on `METRICS_PORT`. `service.instance.id` is the pod hostname, so replicas stay distinct in Mimir.
+- `/metrics` is served on `METRICS_PORT` (default `9090`, was `9464`; the metric names did not change). The same registry is bridged into OTLP, so a scrape and a push carry the same names; the local Alloy scrapes `:9090`.
+- Logs: the `logrus` logger writes the shared JSON shape to stdout and mirrors every record over OTLP; see Observability for the fields.
 
 ## Look and feel
 
@@ -291,7 +297,7 @@ Multi-stage [`Dockerfile`](Dockerfile):
 | Name | Port | Protocol | Expose via Service? |
 |---|---|---|---|
 | `http` | `8080` | TCP (HTTP/1.1) | Yes — Service port `80` → `8080`; front it with an Ingress / Gateway / LoadBalancer |
-| `metrics` | `9464` | TCP (HTTP/1.1) | Optional (debugging/pprof). Not scraped by default — metrics are pushed over OTLP |
+| `metrics` | `9090` | TCP (HTTP/1.1) | Prometheus `/metrics` (was `9464`; a chart that still declares or probes `9464` must change). Also pushed over OTLP |
 
 **Exposure:** serve over **HTTPS** (see cookie gotcha). Ingress `Service` target is `frontend:80` → pod `8080`. If you use a sub-path ingress, also set `BASE_URL` to match. Set the NetworkPolicy so that only the ingress controller can reach `8080`.
 
@@ -335,7 +341,7 @@ resources:
 
 **Config / secrets:** no secrets. Service addresses, observability endpoints and branding vars belong in values → env.
 
-**Telemetry:** pushed, not scraped — OTLP/gRPC to Alloy (`global.monitoring.otlpEndpoint`), profiles to Alloy `:4040`. Metrics carry `job="frontend"` and `instance=<pod>`; no scrape annotations or `ServiceMonitor` are needed.
+**Telemetry:** OTLP/gRPC to Alloy (`global.monitoring.otlpEndpoint`), profiles to Alloy `:4040`. Metrics carry `job="frontend"` and `instance=<pod>`; the same series are also available by scraping the `metrics` port (`9090`); whether the Helm chart declares a scrape annotation or `ServiceMonitor` for it was not checked.
 
 **Helm chart:** [`platform-demo-helm/frontend`](https://github.com/platform-boutique/platform-demo-helm/tree/main/frontend) (built on the shared `platform-common` library chart). It ships with HA defaults — 2 replicas,
 HPA, PodDisruptionBudget, topology spread, NetworkPolicy, restricted pod security context, probes and the full env contract (see Configuration) —
@@ -347,13 +353,25 @@ and was verified under the `restricted` Pod Security Standard on the earlier loc
 
 | Signal | Implementation | Destination |
 |---|---|---|
-| **Traces** | OpenTelemetry: `otelhttp` on the HTTP handler (inbound), `otelgrpc` client handler on every backend connection (outbound), OTLP/gRPC exporter, `AlwaysSample`, W3C TraceContext + Baggage. The trace starts here and propagates through every downstream service | Alloy `:4317` → Tempo |
-| **Metrics** | `prometheus/client_golang` registry — `http_requests_total`, `http_request_duration_seconds` (buckets 1 ms … 10 s), `http_requests_in_flight`, labelled `method`, `route`, `status_code`, plus Go runtime/process collectors — bridged into OpenTelemetry and pushed over OTLP/gRPC every 15 s. `/metrics` is still served on `METRICS_PORT` for debugging | Alloy → Mimir |
-| **Logs** | `logrus` JSON to stdout at `debug` level **and** an OTLP/gRPC hook (`otellogrus`): request path/method/id/session, response status/bytes/duration | Alloy → Loki |
-| **Profiles** | Pyroscope Go SDK (CPU, alloc/inuse objects & space) when enabled | Alloy `:4040` → Pyroscope |
-| **Browser (RUM)** | Grafana Faro Web SDK + Web Tracing in the page, only when `FARO_COLLECTOR_URL` is set: web vitals, errors, page views, fetch/XHR (htmx) traces linked to the server span of the page | Alloy `faro.receiver` → Loki / Tempo. See README "RUM (Grafana Faro)" |
+| **Traces** | OpenTelemetry (`otelhttp` handlers), OTLP/gRPC exporter (batch processor, queue bounded at 2048), W3C TraceContext + Baggage propagated to every downstream call. Sampler from `OTEL_TRACES_SAMPLER` (SDK default `parentbased_always_on`) | Alloy `:4317` -> Tempo |
+| **Metrics** | `prometheus/client_golang` registry: `http_requests_total`, `http_request_duration_seconds` (buckets 1 ms ... 10 s), `http_requests_in_flight`, labelled `method`, `route`, `status_code`, `frontend_currency_cache_total`, plus Go runtime/process collectors. Served as Prometheus text on `:9090/metrics` (`METRICS_PORT`) and, because the same registry is bridged into OpenTelemetry, also pushed over OTLP every 15 s (metric names identical). Plus `build_info{service,version,commit} 1` | Alloy scrapes `:9090` -> Mimir |
+| **Logs** | `logrus`, one JSON object per line on stdout, plus an OTLP/gRPC hook (`otellogrus`) at the `LOG_LEVEL` (default `info`; it used to be fixed at `debug`); the `request_id` is the id the error page footer shows. One access line `request complete` (path, method, status, bytes, `took_ms`) per request at `info`, `debug` for assets and probes; `request started` and the handlers' detail lines are `debug`. Handlers log through the request logger (`ctxKeyLog`), which carries the request's context, so every handler line has `trace_id`/`span_id` while telemetry is on (the span only exists with an OTLP endpoint). `session` is a short SHA-256 fingerprint of the session cookie, never the cookie; error text is scrubbed of e-mail addresses and card-like numbers before it is logged; no passwords or tokens are logged | stdout -> Alloy -> Loki; OTLP -> Alloy -> Loki |
+| **Profiles** | Pyroscope Go SDK (CPU, alloc/in-use objects and space, goroutines, mutex, block), only with `PYROSCOPE_ADDR`; tags `service_name`, `version`, `environment` | Pyroscope |
+| **Browser (RUM)** | Grafana Faro Web SDK + Web Tracing in the page, only when `FARO_COLLECTOR_URL` is set: web vitals, errors, page views, fetch/XHR (htmx) traces linked to the server span of the page | Alloy `faro.receiver` -> Loki / Tempo. See README "RUM (Grafana Faro)" |
+
+**Telemetry contract** (the code is `internal/obs`, the same package in every Go service): telemetry is on only if `OTEL_EXPORTER_OTLP_ENDPOINT` is a valid absolute http(s) URL; `OTEL_SDK_DISABLED=true` forces everything off (profiling too); profiling only with `PYROSCOPE_ADDR`. Start never waits for the collector (the exporters connect in the background) and on SIGTERM the flush is cut off after 4 s, so a blackholed collector cannot hold the process (unit-tested with a listener that never answers: start and shutdown both return within the bound).
+
+**Resource attributes** on every signal: `service.name` (`OTEL_SERVICE_NAME`, default `frontend`), `service.version` (`SERVICE_VERSION`, else build info, else `dev`), `service.namespace=everly`, `deployment.environment` (`DEPLOYMENT_ENVIRONMENT`, default `local`), `service.instance.id` (hostname). `OTEL_RESOURCE_ATTRIBUTES` is applied last.
+
+**Log shape** (one shape for all services): `timestamp` (RFC 3339, UTC, milliseconds), `severity` (`debug`, `info`, `warning`, `error`), `message`, `service`, `version`, `trace_id` and `span_id` (hex, only while a valid span is active, never empty or all zeros), `request_id` (when the caller sent one), `error` (string, on errors), plus the call's own fields (for example `order_id`). Level from `LOG_LEVEL`. `trace_id`/`span_id` come from the context of the log call: handlers and clients log with `log.WithContext(ctx)`, the formatter reads the span from it. Calls without a request context (startup, shutdown) have no ids. No card data, tokens or e-mail addresses are logged.
+
+**Startup and version**: the first line is `message: "starting"` with `version`, `commit` and `environment`; `version`/`commit` come from `SERVICE_VERSION`, ldflags `-X <module>/internal/obs.Version=` / `.Commit=`, or the VCS data Go embeds (no Dockerfile change was made: without any of them a container image reports `version: "dev"`, `commit: "unknown"`). Panics are logged as one JSON line (`message: "panic"`, `error`) before the process dies; a startup error is one JSON error line, exit 1.
+
+**Shutdown**: SIGTERM/SIGINT stops accepting, drains in-flight requests for at most 5 s, then flushes telemetry (cut off after 4 s): the process exits inside 10 s even with an unreachable collector (before this change SIGTERM killed the process without a flush). **pprof** is off. `PPROF_ADDR=127.0.0.1:6060` starts a separate listener; it is never on the metrics port.
 
 Every series carries `job="frontend"` (from `service.name`) and `instance=<pod name>` (`service.instance.id`), which is what the Grafana dashboards select on. Logs land in Loki with `service_name="frontend"` and trace/span ids, so a log line links to its trace.
+
+**Verification status** (observability step 3): unit-tested (`go test ./cmd/... ./internal/...`: env matrix, log shape with and without a span, PII scrubbing, resource attributes, blackholed-collector bound) and the binary was run with a blackholed OTLP/Pyroscope endpoint (SIGTERM exit in about 4 s, `build_info` on the metrics port). Not run: the compose stack, a live collector, Faro against the new build, the e2e suites, an image build.
 
 ## RUM (Grafana Faro)
 
@@ -366,7 +384,7 @@ Real-user monitoring of the browser with the Grafana Faro Web SDK. **Off unless 
 - **Traces tie to the server.** When the request has a valid, sampled span made by this process (otelhttp is the outermost middleware, so it exists while the template renders), the head carries `<meta name="traceparent" content="00-<trace id>-<span id>-<flags>">`. The browser's `documentLoad` span is the child of that server span, so Tempo shows browser and Go server as one trace. No span (telemetry off, `OTEL_EXPORTER_OTLP_ENDPOINT` unset, span not sampled, or a remote parent only): no meta tag, `documentLoad` starts its own trace. htmx requests are same-origin XHR and carry a W3C `traceparent` header, so the server span of a fragment or a poll is a child of the browser's request span. `propagateTraceHeaderCorsUrls` is empty: **no other origin ever gets a trace header** (checked in the browser test with a request to another origin). With a sampled-out session no header is sent at all (`omitTraceContextForUnsampledSessions`), so lowering the sample rate does not silently drop the server's traces.
 - **Shop session.** Faro's session carries the attributes `shop_session_id` (the session id the footer prints; the cookie itself stays `HttpOnly`, the value comes from the config block, not from `document.cookie`) and `shop_user_signed_in` (`"true"`/`"false"`: Faro attributes are strings; never the user id, name or e-mail). The Faro session is sticky (`persistent`), so the pages of a visit are one session even though each page is a full load.
 - **htmx failures:** `htmx:responseError` pushes the event `htmx_response_error` and `htmx:sendError` `htmx_send_error`, each with `status` (`0` for a send error) and `path` only (no query string, ids removed, never the response body).
-- **Version, name, environment:** `FARO_APP_VERSION` defaults to `dev` because the service reports no build version of its own; set it from the image tag.
+- **Version, name, environment:** `FARO_APP_VERSION` defaults to the server's version (`SERVICE_VERSION`, else the Go build info, else `dev`); set it from the image tag.
 
 **Configuration** (all optional; also in the table under "Configuration"):
 
@@ -374,7 +392,7 @@ Real-user monitoring of the browser with the Grafana Faro Web SDK. **Off unless 
 |---|---|---|
 | `FARO_COLLECTOR_URL` | empty = off | `http://` or `https://` URL the **browser** can reach (Alloy `faro.receiver`, its CORS list must allow the shop's origin). Anything else (other scheme, no host, credentials) stops the process at start with a clear message |
 | `FARO_APP_NAME` | `everly-frontend` | `app.name` |
-| `FARO_APP_VERSION` | `dev` | `app.version` |
+| `FARO_APP_VERSION` | `SERVICE_VERSION`, else build info, else `dev` | `app.version` |
 | `FARO_ENV` | `local` | `app.environment` |
 | `FARO_SESSION_SAMPLE_RATE` | `1` | 0..1, share of sessions that report; checked at start |
 
@@ -425,7 +443,7 @@ go run ./cmd/server          # http://localhost:8080
 
 # via Docker
 docker build -t frontend .
-docker run --rm -p 8080:8080 -p 9464:9464 \
+docker run --rm -p 8080:8080 -p 9090:9090 \
   -e PRODUCT_CATALOG_SERVICE_ADDR=product-catalog-service:3550 \
   -e CURRENCY_SERVICE_ADDR=currency-service:7000 \
   -e CART_SERVICE_ADDR=cart-service:7070 \
@@ -438,7 +456,7 @@ docker run --rm -p 8080:8080 -p 9464:9464 \
 go test ./...
 
 curl -s localhost:8080/_healthz            # ok
-curl -s localhost:9464/metrics | grep http_requests_total
+curl -s localhost:9090/metrics | grep http_requests_total
 ```
 
 Browsing to `http://localhost:8080` works with the `Secure` cookies because browsers treat `localhost` as a secure context.
