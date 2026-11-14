@@ -172,11 +172,11 @@ func (fe *frontendServer) renderCheckoutError(log logrus.FieldLogger, r *http.Re
 
 func (fe *frontendServer) renderError(log logrus.FieldLogger, r *http.Request, w http.ResponseWriter, err error, code int, checkout bool) {
 	page := classifyError(err, code)
-	entry := log.WithField("error", fmt.Sprintf("%+v", err)).WithField("status", page.Code)
 	if page.Code >= http.StatusInternalServerError {
-		entry.Error("request error")
+		// a failure of ours or of a backend: the full error with its stack is worth the space
+		log.WithField("error", scrubLogText(fmt.Sprintf("%+v", err))).WithField("status", page.Code).Error("request error")
 	} else {
-		entry.Warn("request rejected")
+		log.WithField("error", scrubLogText(fmt.Sprintf("%v", err))).WithField("status", page.Code).Warn("request rejected")
 	}
 
 	data := map[string]interface{}{
@@ -247,4 +247,16 @@ func (fe *frontendServer) navCategories(ctx context.Context) []*pb.Category {
 	}
 	fe.nav.cats, fe.nav.till = cats, time.Now().Add(navCacheTTL)
 	return cats
+}
+
+var (
+	logEmailPattern = regexp.MustCompile(`[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}`)
+	logCardPattern  = regexp.MustCompile(`\b\d(?:[ -]?\d){12,18}\b`)
+)
+
+// scrubLogText is the safety net for error text that goes into a log line: backends sometimes echo
+// the input they refused, and no e-mail address or card number belongs in the logs (OBS-30).
+func scrubLogText(s string) string {
+	s = logEmailPattern.ReplaceAllString(s, "[email]")
+	return logCardPattern.ReplaceAllString(s, "[number]")
 }

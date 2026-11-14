@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -14,6 +16,8 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"frontend/internal/obs"
 
 	pb "frontend/genproto"
 	pbi "frontend/genproto/inventory"
@@ -101,24 +105,20 @@ type frontendServer struct {
 }
 
 func main() {
-	ctx := context.Background()
-
 	log := logrus.New()
-	log.Level = logrus.DebugLevel
-	log.Formatter = &logrus.JSONFormatter{
-		FieldMap: logrus.FieldMap{
-			logrus.FieldKeyTime:  "timestamp",
-			logrus.FieldKeyLevel: "severity",
-			logrus.FieldKeyMsg:   "message",
-		},
-		TimestampFormat: time.RFC3339Nano,
-	}
-	log.Out = os.Stdout
+
+	// The env contract (OTEL_*, PYROSCOPE_ADDR), the JSON logs (LOG_LEVEL, trace_id/span_id), the OTLP
+	// pipelines, Pyroscope, build_info and /metrics on :9090 (METRICS_PORT) live in internal/obs.
+	initMetrics()
+	o := obs.Start(context.Background(), obs.Options{Service: "frontend", Loggers: []*logrus.Logger{log}})
+	defer o.Recover()
+	defer o.Shutdown()
+	startupFatal = o.Fatal
 
 	// --- Browser RUM (Grafana Faro): validated first so a typo fails the start, not the first page ---
 	faroCfg, err := faroSettingsFromEnv(os.Getenv)
 	if err != nil {
-		log.Fatalf("invalid configuration: %v", err)
+		o.Fatal("invalid configuration", err)
 	}
 	faro = faroCfg
 	if faro != nil {
@@ -126,30 +126,6 @@ func main() {
 			faro.AppName, faro.AppVersion, faro.Env, faro.CollectorURL, faro.SampleRate)
 	} else {
 		log.Info("FARO_COLLECTOR_URL is empty: browser RUM (Faro) is off")
-	}
-
-	// --- Observability ---
-	initMetrics()
-	startMetricsServer(log)
-
-	// --- Telemetry: traces, metrics and logs pushed over OTLP/gRPC (Alloy → Tempo/Mimir/Loki) ---
-	shutdownTelemetry, err := initTelemetry(ctx, "frontend", log)
-	if err != nil {
-		log.Warnf("telemetry disabled, continuing without it: %v", err)
-	} else {
-		log.Info("telemetry enabled (OTLP/gRPC)")
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = shutdownTelemetry(shutdownCtx)
-		}()
-	}
-
-	if addr := pyroscopeAddrFrom(os.Getenv); addr != "" {
-		log.Info("Profiling enabled.")
-		go initProfiling(log, addr)
-	} else {
-		log.Info("Profiling disabled (PYROSCOPE_ADDR is unset).")
 	}
 
 	// --- Service wiring ---
@@ -265,13 +241,40 @@ func main() {
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	log.Fatal(srv.ListenAndServe())
+
+	// SIGTERM/SIGINT: stop accepting, let in-flight requests finish (bounded), then the deferred
+	// o.Shutdown flushes telemetry (bounded at obs.DefaultShutdownTimeout), so the process is gone
+	// well inside 10 s even when the collector is unreachable.
+	sigCtx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stopSignals()
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.ListenAndServe() }()
+	select {
+	case err := <-serveErr:
+		o.Fatal("server error", err)
+	case <-sigCtx.Done():
+	}
+	log.Info("shutdown signal received, draining")
+	drainCtx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+	defer cancel()
+	if err := srv.Shutdown(drainCtx); err != nil {
+		log.WithError(err).Warn("drain timed out, closing remaining connections")
+		_ = srv.Close()
+	}
+	log.Info("stopped")
 }
+
+// drainTimeout is how long in-flight requests get after SIGTERM; with the 4 s telemetry flush
+// that keeps the whole exit under the 10 s of CODE-04.
+const drainTimeout = 5 * time.Second
+
+// startupFatal logs a startup error as one JSON line and exits 1; main points it at obs.Fatal.
+var startupFatal = func(msg string, err error) { logrus.WithError(err).Error(msg); os.Exit(1) }
 
 func mustMapEnv(target *string, envKey string) {
 	v := os.Getenv(envKey)
 	if v == "" {
-		panic(fmt.Sprintf("environment variable %q not set", envKey))
+		startupFatal("invalid configuration", fmt.Errorf("environment variable %q not set", envKey))
 	}
 	*target = v
 }
@@ -283,8 +286,9 @@ func mustConnGRPC(conn **grpc.ClientConn, addr string) {
 	*conn, err = grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
+		grpc.WithChainUnaryInterceptor(obs.UnaryClientInterceptor()), // x-request-id to the next service's logs
 	)
 	if err != nil {
-		panic(errors.Wrapf(err, "grpc: failed to connect %s", addr))
+		startupFatal("grpc client", errors.Wrapf(err, "failed to connect %s", addr))
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/otel/trace"
+
+	"frontend/internal/obs"
 )
 
 // Grafana Faro (browser real-user monitoring), see README "RUM (Grafana Faro)".
@@ -18,7 +20,6 @@ import (
 
 const (
 	faroDefaultAppName = "everly-frontend"
-	faroDefaultVersion = "dev" // the service reports no build version of its own
 	faroDefaultEnv     = "local"
 	faroMaxFieldLen    = 128
 )
@@ -58,10 +59,12 @@ func faroSettingsFromEnv(getenv func(string) string) (*faroSettings, error) {
 		return nil, fmt.Errorf("FARO_COLLECTOR_URL must not contain credentials (user:password@)")
 	}
 
+	// the browser app reports the same version as the server: SERVICE_VERSION, else build info, else "dev"
+	version, _ := obs.ResolveBuild(getenv)
 	s := &faroSettings{
 		CollectorURL: u.String(),
 		AppName:      faroDefaultAppName,
-		AppVersion:   faroDefaultVersion,
+		AppVersion:   version,
 		Env:          faroDefaultEnv,
 		SampleRate:   1,
 	}

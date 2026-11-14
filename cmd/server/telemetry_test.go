@@ -1,14 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/sirupsen/logrus"
+
+	"frontend/internal/obs"
 )
 
 // ---------------------------------------------------------------------------
@@ -200,71 +207,92 @@ func TestWrapRoutes_EmptyRouter(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Telemetry switches: the contract of every service
+// Telemetry switches: the contract of every service (OBS-01, OBS-04)
 // ---------------------------------------------------------------------------
 
-func TestOtlpEndpointFrom_Matrix(t *testing.T) {
-	const ep = "http://alloy:4317"
+// The full table is in internal/obs/env_test.go; this one pins what the frontend relies on: the variable
+// names it reads, the legacy ones it no longer reads, and its own service name.
+func TestEnvContract_Matrix(t *testing.T) {
+	const ep, py = "http://alloy:4317", "http://alloy:4040"
 	cases := []struct {
-		name string
-		env  map[string]string
-		want string
+		name      string
+		env       map[string]string
+		telemetry string // expected OTLP endpoint, "" = off
+		profiling string // expected Pyroscope address, "" = off
 	}{
-		{"nothing set: off", map[string]string{}, ""},
-		{"endpoint set: on", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep}, ep},
-		{"endpoint blank: off", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "  "}, ""},
-		{"disabled true wins over endpoint", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "true"}, ""},
-		{"disabled TRUE (case) wins", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "TRUE"}, ""},
-		{"disabled with spaces wins", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": " true "}, ""},
-		{"disabled false does not disable", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "false"}, ep},
-		{"disabled 1 is not true (spec)", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "1"}, ep},
-		{"disabled true without endpoint: off", map[string]string{"OTEL_SDK_DISABLED": "true"}, ""},
-		{"legacy ENABLE_TRACING=0 still forces off", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "ENABLE_TRACING": "0"}, ""},
-		{"ENABLE_TRACING=1 does not turn it on", map[string]string{"ENABLE_TRACING": "1"}, ""},
-		{"legacy COLLECTOR_SERVICE_ADDR alone no longer turns it on", map[string]string{"COLLECTOR_SERVICE_ADDR": "alloy:4317"}, ""},
-		{"compose settings: off", map[string]string{"ENABLE_TRACING": "0", "OTEL_SDK_DISABLED": "true", "ENABLE_PROFILING": "0"}, ""},
+		{"nothing set: off", map[string]string{}, "", ""},
+		{"endpoint set: on", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep}, ep, ""},
+		{"endpoint blank: off", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "  "}, "", ""},
+		{"endpoint without scheme: off, no crash", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": "alloy:4317"}, "", ""},
+		{"disabled true wins over endpoint and pyroscope", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "PYROSCOPE_ADDR": py, "OTEL_SDK_DISABLED": "true"}, "", ""},
+		{"disabled TRUE (case) wins", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "TRUE"}, "", ""},
+		{"disabled with spaces wins", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": " true "}, "", ""},
+		{"disabled false does not disable", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "false"}, ep, ""},
+		{"disabled 1 is not true (spec)", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "OTEL_SDK_DISABLED": "1"}, ep, ""},
+		{"ENABLE_TRACING=0 is no longer read", map[string]string{"OTEL_EXPORTER_OTLP_ENDPOINT": ep, "ENABLE_TRACING": "0"}, ep, ""},
+		{"ENABLE_TRACING=1 does not turn it on", map[string]string{"ENABLE_TRACING": "1"}, "", ""},
+		{"COLLECTOR_SERVICE_ADDR alone no longer turns it on", map[string]string{"COLLECTOR_SERVICE_ADDR": "alloy:4317"}, "", ""},
+		{"ENABLE_PROFILING=1 alone: off (no default address)", map[string]string{"ENABLE_PROFILING": "1"}, "", ""},
+		{"pyroscope address set: on", map[string]string{"PYROSCOPE_ADDR": py}, "", py},
+		{"pyroscope address blank: off", map[string]string{"PYROSCOPE_ADDR": " "}, "", ""},
+		{"pyroscope address without scheme: off", map[string]string{"PYROSCOPE_ADDR": "alloy:4040"}, "", ""},
+		{"ENABLE_PROFILING=0 forces profiling off", map[string]string{"PYROSCOPE_ADDR": py, "ENABLE_PROFILING": "0"}, "", ""},
+		{"compose settings: everything off", map[string]string{"ENABLE_TRACING": "0", "OTEL_SDK_DISABLED": "true", "ENABLE_PROFILING": "0"}, "", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := otlpEndpointFrom(envMap(c.env)); got != c.want {
-				t.Errorf("got %q, want %q", got, c.want)
+			s := obs.LoadSettings("frontend", obs.Getenv(envMap(c.env)))
+			if s.OTLPEndpoint != c.telemetry || s.TelemetryOn() != (c.telemetry != "") {
+				t.Errorf("telemetry endpoint = %q (on=%v), want %q", s.OTLPEndpoint, s.TelemetryOn(), c.telemetry)
+			}
+			if s.PyroscopeAddr != c.profiling || s.ProfilingOn() != (c.profiling != "") {
+				t.Errorf("profiling addr = %q (on=%v), want %q", s.PyroscopeAddr, s.ProfilingOn(), c.profiling)
 			}
 		})
 	}
 }
 
-func TestPyroscopeAddrFrom_Matrix(t *testing.T) {
-	cases := []struct {
-		name string
-		env  map[string]string
-		want string
-	}{
-		{"nothing set: off", map[string]string{}, ""},
-		{"ENABLE_PROFILING=1 alone: off (no default address)", map[string]string{"ENABLE_PROFILING": "1"}, ""},
-		{"address set: on", map[string]string{"PYROSCOPE_ADDR": "http://alloy:4040"}, "http://alloy:4040"},
-		{"address blank: off", map[string]string{"PYROSCOPE_ADDR": " "}, ""},
-		{"legacy ENABLE_PROFILING=0 forces off", map[string]string{"PYROSCOPE_ADDR": "http://alloy:4040", "ENABLE_PROFILING": "0"}, ""},
-		{"OTEL_SDK_DISABLED does not touch profiling", map[string]string{"PYROSCOPE_ADDR": "http://alloy:4040", "OTEL_SDK_DISABLED": "true"}, "http://alloy:4040"},
+func TestEnvContract_DefaultsAndResource(t *testing.T) {
+	s := obs.LoadSettings("frontend", obs.Getenv(envMap(map[string]string{"HOSTNAME": "frontend-0"})))
+	if s.Service != "frontend" || s.Environment != "local" || s.Instance != "frontend-0" || s.MetricsAddr != ":9090" || s.PprofAddr != "" {
+		t.Fatalf("defaults: %+v (the metrics port moved from 9464 to 9090)", s)
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			if got := pyroscopeAddrFrom(envMap(c.env)); got != c.want {
-				t.Errorf("got %q, want %q", got, c.want)
-			}
-		})
+	s = obs.LoadSettings("frontend", obs.Getenv(envMap(map[string]string{"METRICS_PORT": "9464", "SERVICE_VERSION": "1.2.3", "DEPLOYMENT_ENVIRONMENT": "dev", "PPROF_ADDR": "127.0.0.1:6060"})))
+	if s.MetricsAddr != ":9464" || s.Version != "1.2.3" || s.Environment != "dev" || s.PprofAddr != "127.0.0.1:6060" {
+		t.Fatalf("overrides: %+v", s)
 	}
 }
 
-// initTelemetry must refuse to start (and touch no global provider) when disabled.
-func TestInitTelemetry_DisabledByEnv(t *testing.T) {
-	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
-	t.Setenv("OTEL_SDK_DISABLED", "true")
-	t.Setenv("ENABLE_TRACING", "")
-	shutdown, err := initTelemetry(context.Background(), "frontend")
-	if err == nil {
-		t.Fatal("expected the disabled error")
+// Faro reports the server's version unless FARO_APP_VERSION says otherwise.
+func TestFaroVersionFollowsServiceVersion(t *testing.T) {
+	get := envMap(map[string]string{"FARO_COLLECTOR_URL": "http://localhost:12347/collect", "SERVICE_VERSION": "2.3.4"})
+	s, err := faroSettingsFromEnv(get)
+	if err != nil || s.AppVersion != "2.3.4" {
+		t.Fatalf("got %+v, %v", s, err)
 	}
-	if shutdown == nil || shutdown(context.Background()) != nil {
-		t.Error("shutdown must be a usable no-op")
+	get = envMap(map[string]string{"FARO_COLLECTOR_URL": "http://localhost:12347/collect", "SERVICE_VERSION": "2.3.4", "FARO_APP_VERSION": "web-9"})
+	if s, _ := faroSettingsFromEnv(get); s.AppVersion != "web-9" {
+		t.Fatalf("FARO_APP_VERSION must win: %+v", s)
+	}
+}
+
+// Start the kit the way main does (same options, no listener): the first line is the JSON "starting" line.
+func TestStartWiring_StartingLine(t *testing.T) {
+	for _, k := range []string{"OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_SDK_DISABLED", "PYROSCOPE_ADDR", "ENABLE_PROFILING", "LOG_LEVEL", "SERVICE_VERSION"} {
+		t.Setenv(k, "")
+	}
+	var out bytes.Buffer
+	l := logrus.New()
+	x := obs.Start(context.Background(), obs.Options{
+		Service: "frontend", Loggers: []*logrus.Logger{l}, Out: &out, NoMetricsServer: true,
+		Registerer: prometheus.NewRegistry(), Gatherer: prometheus.NewRegistry(),
+	})
+	defer x.Shutdown()
+	var first map[string]any
+	if err := json.Unmarshal([]byte(strings.SplitN(out.String(), "\n", 2)[0]), &first); err != nil {
+		t.Fatalf("first line is not JSON: %v: %s", err, out.String())
+	}
+	if first["message"] != "starting" || first["service"] != "frontend" || first["severity"] != "info" || first["version"] == nil || first["commit"] == nil {
+		t.Fatalf("starting line: %v", first)
 	}
 }
