@@ -19,8 +19,20 @@ RUN go build -ldflags="-s -w" -o /bin/frontend ./cmd/server
 # ---- Runtime stage ----
 FROM alpine:3.24 AS runtime
 
+ARG SERVICE_VERSION=dev
+ARG SERVICE_COMMIT=unknown
+
+LABEL org.opencontainers.image.title="frontend" \
+      org.opencontainers.image.source="https://github.com/platform-boutique/app-frontend" \
+      org.opencontainers.image.revision="${SERVICE_COMMIT}" \
+      org.opencontainers.image.version="${SERVICE_VERSION}" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
 RUN apk add --no-cache ca-certificates \
-    && addgroup -S appgroup && adduser -S appuser -G appgroup
+    && addgroup -S -g 10001 appgroup && adduser -S -u 10001 -G appgroup appuser
+
+ENV SERVICE_VERSION=${SERVICE_VERSION} \
+    SERVICE_COMMIT=${SERVICE_COMMIT}
 
 WORKDIR /app
 
@@ -28,7 +40,8 @@ COPY --from=builder /bin/frontend .
 COPY --chown=appuser:appgroup templates/ ./templates/
 COPY --chown=appuser:appgroup static/ ./static/
 
-USER appuser
+# Numeric so Kubernetes runAsNonRoot can verify it (matches the charts' runAsUser).
+USER 10001:10001
 
 EXPOSE 8080
 
