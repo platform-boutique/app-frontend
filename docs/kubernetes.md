@@ -15,19 +15,19 @@
 
 ```yaml
 startupProbe:
-  httpGet: { path: /_healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 8080 }
   periodSeconds: 2
   failureThreshold: 15
 readinessProbe:
-  httpGet: { path: /_healthz, port: 8080 }
+  httpGet: { path: /readyz, port: 8080 }
   periodSeconds: 5
 livenessProbe:
-  httpGet: { path: /_healthz, port: 8080 }
+  httpGet: { path: /healthz, port: 8080 }
   periodSeconds: 10
   failureThreshold: 3
 ```
 
-Health is static, so readiness doesn't reflect backend health. Pod startup is near-instant.
+`/healthz` is static; `/readyz` reflects the three backends every page needs (catalogue, currency, cart). With `BASE_URL` set, the paths carry that prefix. Pod startup is near-instant. Not run in a cluster: the paths are new, the chart in `platform-demo-helm` still has to be switched.
 
 **Security context**
 

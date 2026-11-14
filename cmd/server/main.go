@@ -105,6 +105,13 @@ type frontendServer struct {
 }
 
 func main() {
+	// `frontend healthcheck` is the container health probe: GET /healthz on the own port, exit 0 only for 200.
+	// It runs before anything else so the probe starts no telemetry and writes no log line.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		baseUrl = os.Getenv("BASE_URL")
+		os.Exit(healthcheck(listenPort(), os.Stdout))
+	}
+
 	log := logrus.New()
 
 	// The env contract (OTEL_*, PYROSCOPE_ADDR), the JSON logs (LOG_LEVEL, trace_id/span_id), the OTLP
@@ -215,7 +222,10 @@ func main() {
 	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", static))
 	r.Handle(baseUrl+"/favicon.ico", static.file("/favicon.svg")) // the logo; browsers ask for it when a page has no <link rel=icon>
 	r.HandleFunc(baseUrl+"/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "User-agent: *\nDisallow: /") })
-	r.HandleFunc(baseUrl+"/_healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "ok") })
+	r.HandleFunc(baseUrl+"/_healthz", livenessHandler) // the original probe path (compose, e2e tests): same answer as /healthz
+	r.HandleFunc(baseUrl+"/healthz", livenessHandler)
+	r.HandleFunc(baseUrl+"/readyz", svc.readinessHandler)
+	r.HandleFunc(baseUrl+"/version", versionHandler)
 	r.HandleFunc(baseUrl+"/product-meta/{ids}", svc.getProductByID).Methods(http.MethodGet)
 
 	// Wrap all routes with Prometheus metrics middleware
@@ -227,10 +237,7 @@ func main() {
 	handler = ensureSessionID(handler)                 // session ID cookie
 	handler = otelhttp.NewHandler(handler, "frontend") // OTel tracing
 
-	srvPort := port
-	if p := os.Getenv("PORT"); p != "" {
-		srvPort = p
-	}
+	srvPort := listenPort()
 	addr := os.Getenv("LISTEN_ADDR")
 
 	log.Infof("starting server on %s:%s", addr, srvPort)

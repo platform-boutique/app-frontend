@@ -51,7 +51,8 @@ USER 10001:10001
 
 EXPOSE 8080
 
+# Exec form, no shell and no wget: `frontend healthcheck` does GET /healthz on its own port (PORT, default 8080)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
-    CMD wget -qO- http://localhost:${PORT:-8080}/_healthz || exit 1
+    CMD ["/app/frontend", "healthcheck"]
 
 ENTRYPOINT ["./frontend"]

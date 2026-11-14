@@ -39,7 +39,7 @@ flowchart LR
 | **Image** | `mladenovskistefan/frontend` |
 | **Protocol / port** | HTTP/1.1 on `8080` |
 | **Metrics** | Prometheus `/metrics` on `9090` (`METRICS_PORT`), scraped by Alloy; the same registry is also pushed over OTLP/gRPC when an endpoint is set |
-| **Health** | `GET /_healthz` → `200 ok` — static, no dependency checks |
+| **Health** | `GET /healthz` (liveness, `200 ok`, no dependency checks), `GET /readyz` (readiness: `200 ok` while the gRPC connections to product-catalog, currency and cart are READY, else `503 not ready: <names>`; 1.5 s limit), `GET /version` (JSON `service`, `version`, `commit`, `build_time`); `GET /_healthz` is the original liveness path and answers like `/healthz`. `frontend healthcheck` is the container probe |
 | **State** | None server-side; session id lives in a browser cookie, carts live in `cart-service` |
 | **Depends on (gRPC)** | `product-catalog-service`, `currency-service`, `cart-service`, `recommendation-service`, `checkout-service`, `shipping-service`, `ad-service` |
 | **Called by** | Browsers / ingress / load generators |

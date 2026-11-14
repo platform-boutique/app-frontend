@@ -25,7 +25,10 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
 | `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`). GET/HEAD only. Never sets a cookie. Every response has `Cache-Control` (`public, max-age=86400` for `img/` and `js/vendor/`, `public, max-age=300, must-revalidate` for the rest: nothing is fingerprinted, so nothing is `immutable`), `ETag` and `Last-Modified` (`304` on `If-None-Match` / `If-Modified-Since`) and `X-Content-Type-Options: nosniff`. Text types of 256 bytes or more (css, js, svg, json, html, txt, xml) are sent gzip-compressed to clients that accept it (`Vary: Accept-Encoding`, the compressed body is kept in memory, at most 64 files, and recomputed when size or mtime change; the ETag of the gzip variant ends in `-gzip`); images (webp) are never compressed. Brotli is not offered (would need a new dependency). Directories are `404` (no listing, no index) |
 | `/favicon.ico` | GET | The logo (`static/favicon.svg`, `image/svg+xml`) with the `/static/` headers and no cookie |
-| `/_healthz` | GET | Liveness/readiness (`ok`) |
+| `/healthz` | GET | Liveness: `200 ok`, no dependency checked |
+| `/readyz` | GET | Readiness: `200 ok` when the connections to product-catalog, currency and cart are READY, else `503` with `not ready: <backend names>`. Waits at most 1.5 s |
+| `/version` | GET | JSON `{"service","version","commit","build_time"}` |
+| `/_healthz` | GET | Liveness (`ok`), kept for compose, the e2e tests and `tests/faro/run.sh`; same handler as `/healthz` |
 | `/robots.txt` | GET | `Disallow: /` |
 
 **Supported currencies** (whitelist in code, intersected with what `currency-service` offers): `USD`, `EUR`, `CAD`, `JPY`, `GBP`, `TRY`. Default is `USD`.
