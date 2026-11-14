@@ -370,7 +370,7 @@ func TestLogin_WrongPasswordAndUnknownEmailAreIndistinguishable(t *testing.T) {
 		if rr.Code != http.StatusUnprocessableEntity {
 			t.Errorf("%s: status %d, want 422", name, rr.Code)
 		}
-		assertContains(t, rr.Body.String(), msgWrongCredentials, `role="alert"`)
+		assertContains(t, rr.Body.String(), msgWrongLogin, `role="alert"`)
 		if cookieNamed(rr, cookieAuth) != nil {
 			t.Errorf("%s: a cookie was set", name)
 		}
@@ -399,7 +399,7 @@ func TestLogin_WrongPasswordAndUnknownEmailAreIndistinguishable(t *testing.T) {
 func TestLogin_MalformedEmailGivesTheSameGenericMessage(t *testing.T) {
 	e := newAcct(t)
 	rr := e.serve(http.MethodPost, "/login", loginForm("not-an-email", "whatever1"), anon("anon-1"), nil)
-	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), msgWrongCredentials) || len(e.users.loginCalls) != 0 {
+	if rr.Code != http.StatusUnprocessableEntity || !strings.Contains(rr.Body.String(), msgWrongLogin) || len(e.users.loginCalls) != 0 {
 		t.Errorf("status %d, login calls %d", rr.Code, len(e.users.loginCalls))
 	}
 }

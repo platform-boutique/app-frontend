@@ -47,7 +47,7 @@ func main() {
 	if len(os.Args) > 1 {
 		addr = os.Args[1]
 	}
-	lis, err := net.Listen("tcp", addr)
+	lis, err := net.Listen("tcp", addr) // #nosec G102 -- throwaway test sink; it runs in a container and must be reachable on the private docker network
 	if err != nil {
 		log.Fatal(err)
 	}

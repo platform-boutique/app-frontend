@@ -58,7 +58,7 @@ const (
 	defaultTokenLifetime = 14 * 24 * time.Hour // used only if the service sends no expiry
 
 	msgAccountsUnavailable = "Accounts are not available right now. Please try again in a moment. You can keep shopping as a guest."
-	msgWrongCredentials    = "Wrong email or password."
+	msgWrongLogin          = "Wrong email or password."
 	msgTooManyAttempts     = "Too many attempts. Please wait a minute and try again."
 	msgDuplicateEmail      = "An account with this email already exists."
 )
@@ -135,9 +135,16 @@ func authCookie(token string, maxAge int) *http.Cookie {
 }
 
 func expireAuthCookie(w http.ResponseWriter) {
-	c := authCookie("", -1)
-	c.Expires = time.Unix(0, 0)
-	http.SetCookie(w, c)
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieAuth,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+	})
 }
 
 // authToken returns the token from the cookie, "" when there is none.
@@ -296,7 +303,7 @@ func (f *authForm) validateLogin(password string) {
 	if f.Errors["email"] != "" && strings.TrimSpace(f.Email) != "" {
 		// a malformed address cannot belong to an account; same sentence as a wrong password (no hint)
 		delete(f.Errors, "email")
-		f.fail("form", msgWrongCredentials)
+		f.fail("form", msgWrongLogin)
 	}
 	if password == "" {
 		f.fail("password", "Please enter your password.")
@@ -465,7 +472,7 @@ func (fe *frontendServer) authFailed(w http.ResponseWriter, r *http.Request, log
 	case codes.AlreadyExists:
 		form.fail("email", msgDuplicateEmail)
 	case codes.Unauthenticated:
-		form.fail("form", msgWrongCredentials)
+		form.fail("form", msgWrongLogin)
 	case codes.ResourceExhausted:
 		code = http.StatusTooManyRequests
 		form.fail("form", msgTooManyAttempts)
