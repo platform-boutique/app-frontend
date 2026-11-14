@@ -4,6 +4,7 @@ FROM golang:1.26-alpine AS builder
 # Build identity, linked into internal/obs (read by the service at start)
 ARG SERVICE_VERSION=dev
 ARG SERVICE_COMMIT=unknown
+ARG BUILD_TIME=
 
 ENV CGO_ENABLED=0
 ENV GOOS=linux
@@ -19,7 +20,7 @@ RUN go mod download
 # Build
 COPY . .
 RUN go build \
-    -ldflags="-s -w -X frontend/internal/obs.Version=${SERVICE_VERSION} -X frontend/internal/obs.Commit=${SERVICE_COMMIT}" \
+    -ldflags="-s -w -X frontend/internal/obs.Version=${SERVICE_VERSION} -X frontend/internal/obs.Commit=${SERVICE_COMMIT} -X frontend/internal/obs.BuildTime=${BUILD_TIME}" \
     -o /bin/frontend ./cmd/server
 
 # ---- Runtime stage ----
