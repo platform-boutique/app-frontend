@@ -282,7 +282,7 @@ Multi-stage [`Dockerfile`](Dockerfile):
 | runtime | `alpine:3.24` | binary + `templates/` + `static/` under `/app`; adds `ca-certificates` |
 
 - **Entrypoint:** `./frontend` (working dir `/app` — templates and static files are loaded by relative path, so don't change the working dir).
-- **User:** `appuser` — UID `100`, GID `101` (verified). Set `runAsUser: 100` for `runAsNonRoot`.
+- **User:** numeric `USER 10001:10001` (`appuser`/`appgroup`, created with these fixed ids; `id` in the container prints `uid=10001(appuser) gid=10001(appgroup)`). Build args `SERVICE_VERSION` (default `dev`) and `SERVICE_COMMIT` (default `unknown`) set the OCI labels `version`/`revision` (plus `source`, `licenses=Apache-2.0`) and the ENV of the same names.
 - **EXPOSE:** `8080`.
 - **Docker `HEALTHCHECK`:** `wget -qO- http://localhost:${PORT:-8080}/_healthz`. Alpine's busybox `wget` is in the image, so an exec probe is possible, but `httpGet` is simpler.
 - **Image size:** 76.7 MB for `platform-demo/frontend:local` (`docker images`, the local compose build of this branch before the audit fixes; `static/` alone is 17 MB because of the product photos). The older ~15 MB figure predates them. Not rebuilt after the fixes.
@@ -324,7 +324,7 @@ Health is static, so readiness doesn't reflect backend health. Pod startup is ne
 ```yaml
 securityContext:
   runAsNonRoot: true
-  runAsUser: 100
+  runAsUser: 10001
   runAsGroup: 101
   readOnlyRootFilesystem: true       # nothing is written at runtime
   allowPrivilegeEscalation: false
