@@ -219,6 +219,14 @@ type navCache struct {
 	mu   sync.Mutex
 	cats []*pb.Category
 	till time.Time
+	now  func() time.Time // nil = time.Now; tests inject a clock (the host clock jumps)
+}
+
+func (n *navCache) clock() time.Time {
+	if n.now != nil {
+		return n.now()
+	}
+	return time.Now()
 }
 
 const (
@@ -235,17 +243,17 @@ func (fe *frontendServer) navCategories(ctx context.Context) []*pb.Category {
 	}
 	fe.nav.mu.Lock()
 	defer fe.nav.mu.Unlock()
-	if time.Now().Before(fe.nav.till) {
+	if fe.nav.clock().Before(fe.nav.till) {
 		return fe.nav.cats
 	}
 	ctx, cancel := context.WithTimeout(ctx, navFetchTimeout)
 	defer cancel()
 	cats, err := fe.listCategories(ctx)
 	if err != nil {
-		fe.nav.till = time.Now().Add(navCacheErrTTL)
+		fe.nav.till = fe.nav.clock().Add(navCacheErrTTL)
 		return fe.nav.cats // last known list, if any
 	}
-	fe.nav.cats, fe.nav.till = cats, time.Now().Add(navCacheTTL)
+	fe.nav.cats, fe.nav.till = cats, fe.nav.clock().Add(navCacheTTL)
 	return cats
 }
 
