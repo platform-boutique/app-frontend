@@ -15,7 +15,7 @@ The HTTP web storefront for the platform-demo e-commerce platform. It serves ser
 
 ## Where it sits
 
-Browsers talk to the storefront only; it fans out to the backends below. It calls `ad-service`, `cart-service`, `checkout-service`, `currency-service`, `product-catalog-service`, `recommendation-service`, `shipping-service`.
+Browsers talk to the storefront only; it fans out to the backends below. It calls `ad-service`, `cart-service`, `checkout-service`, `currency-service`, `product-catalog-service`, `recommendation-service`, `shipping-service` and, when configured, `review-service`, `order-service`, `user-service`, `inventory-service` and the mailbox of `email-service` (dotted).
 
 ```mermaid
 flowchart LR
@@ -27,9 +27,16 @@ flowchart LR
   frontend --> product_catalog_service["product-catalog-service"]
   frontend --> recommendation_service["recommendation-service"]
   frontend --> shipping_service["shipping-service"]
+  frontend -.-> review_service["review-service"]
+  frontend -.-> order_service["order-service"]
+  frontend -.-> user_service["user-service"]
+  frontend -.-> inventory_service["inventory-service"]
+  frontend -.-> email_service["email-service"]
   browser(["Browser"]) --> frontend
   classDef me stroke-width:3px;
 ```
+
+Pages: [architecture](architecture.md), [API](api.md), [configuration](configuration.md), [observability](observability.md), [operations](operations.md), [development](development.md), [decisions](adr/0001-server-rendered-html-with-htmx.md).
 
 ## At a glance
 
