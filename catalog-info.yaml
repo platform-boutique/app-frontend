@@ -24,12 +24,17 @@ spec:
   lifecycle: experimental
   owner: group:default/maintainers
   system: shop
-  consumesApis: [ad-service-api, cart-service-api, checkout-service-api, currency-service-api, product-catalog-service-api, recommendation-service-api, shipping-service-api]
+  consumesApis: [ad-service-api, cart-service-api, checkout-service-api, currency-service-api, email-mailbox-api, inventory-service-api, order-service-api, product-catalog-service-api, recommendation-service-api, review-service-api, shipping-service-api, user-service-api]
   dependsOn:
     - component:default/ad-service
     - component:default/cart-service
     - component:default/checkout-service
     - component:default/currency-service
+    - component:default/email-service
+    - component:default/inventory-service
+    - component:default/order-service
     - component:default/product-catalog-service
     - component:default/recommendation-service
+    - component:default/review-service
     - component:default/shipping-service
+    - component:default/user-service

@@ -34,8 +34,8 @@ livenessProbe:
 ```yaml
 securityContext:
   runAsNonRoot: true
-  runAsUser: 100
-  runAsGroup: 101
+  runAsUser: 10001
+  runAsGroup: 10001
   readOnlyRootFilesystem: true       # nothing is written at runtime
   allowPrivilegeEscalation: false
   capabilities: { drop: ["ALL"] }
