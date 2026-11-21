@@ -59,7 +59,8 @@ type frontendServer struct {
 	currencySvcAddr string
 	currencySvcConn *grpc.ClientConn
 	currencyClient  pb.CurrencyServiceClient // nil = the client of currencySvcConn; a test double otherwise
-	currency        currencyCache
+	currency        ttlCache
+	products        ttlCache // GetProduct for cart lines and recommendations, see product_cache.go
 
 	cartSvcAddr string
 	cartSvcConn *grpc.ClientConn
@@ -137,6 +138,7 @@ func main() {
 
 	// --- Service wiring ---
 	svc := new(frontendServer)
+	svc.products.configureForProducts()
 	baseUrl = os.Getenv("BASE_URL")
 
 	mustMapEnv(&svc.productCatalogSvcAddr, "PRODUCT_CATALOG_SERVICE_ADDR")

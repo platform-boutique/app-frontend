@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"sync"
 
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
@@ -23,17 +22,11 @@ type cartLine struct {
 // (NotFound) are skipped and logged once per call, any other error is returned.
 // The page and the Empty-cart button keep working with stale lines in the cart.
 func (fe *frontendServer) liveCartLines(ctx context.Context, log logrus.FieldLogger, cart []*pb.CartItem) (lines []cartLine, stale int, err error) {
-	products := make([]*pb.Product, len(cart))
-	errs := make([]error, len(cart))
-	var wg sync.WaitGroup
+	ids := make([]string, len(cart))
 	for i, item := range cart {
-		wg.Add(1)
-		go func(i int, id string) {
-			defer wg.Done()
-			products[i], errs[i] = fe.getProduct(ctx, id)
-		}(i, item.GetProductId())
+		ids[i] = item.GetProductId()
 	}
-	wg.Wait()
+	products, errs := fetchProducts(ids, func(id string) (*pb.Product, error) { return fe.getProductCached(ctx, id) })
 
 	var staleIDs []string
 	for i, item := range cart {

@@ -53,14 +53,26 @@ type flight struct {
 	err  error
 }
 
-type currencyCache struct {
+// ttlCache is the generic part: a bounded TTL map with singleflight and an injectable clock. The
+// currency lookups and the product lookups of cart lines and recommendations use one each.
+type ttlCache struct {
+	counter *prometheus.CounterVec // hit/miss/shared per op; nil = currencyCacheTotal
+	max     int                    // bound of the entry map; 0 = conversionMaxEntries
 	mu      sync.Mutex
 	now     func() time.Time // nil = time.Now
 	entries map[any]cachedValue
 	flights map[any]*flight
 }
 
-func (c *currencyCache) clock() time.Time {
+func (c *ttlCache) count(op, result string) {
+	if c.counter != nil {
+		c.counter.WithLabelValues(op, result).Inc()
+		return
+	}
+	currencyCacheTotal.WithLabelValues(op, result).Inc()
+}
+
+func (c *ttlCache) clock() time.Time {
 	if c.now != nil {
 		return c.now()
 	}
@@ -71,20 +83,20 @@ func (c *currencyCache) clock() time.Time {
 // successful result for ttl. fetch runs on a context that survives the cancellation of the caller
 // that happened to start it (the others still want the answer), bounded by backendTimeout; every
 // caller stops waiting when its own context ends.
-func (c *currencyCache) get(ctx context.Context, op string, key any, ttl time.Duration, fetch func(context.Context) (any, error)) (any, error) {
+func (c *ttlCache) get(ctx context.Context, op string, key any, ttl time.Duration, fetch func(context.Context) (any, error)) (any, error) {
 	c.mu.Lock()
 	now := c.clock()
 	if e, ok := c.entries[key]; ok {
 		if now.Before(e.until) {
 			c.mu.Unlock()
-			currencyCacheTotal.WithLabelValues(op, "hit").Inc()
+			c.count(op, "hit")
 			return e.val, nil
 		}
 		delete(c.entries, key)
 	}
 	if f, ok := c.flights[key]; ok {
 		c.mu.Unlock()
-		currencyCacheTotal.WithLabelValues(op, "shared").Inc()
+		c.count(op, "shared")
 		return wait(ctx, f)
 	}
 	f := &flight{done: make(chan struct{})}
@@ -93,7 +105,7 @@ func (c *currencyCache) get(ctx context.Context, op string, key any, ttl time.Du
 	}
 	c.flights[key] = f
 	c.mu.Unlock()
-	currencyCacheTotal.WithLabelValues(op, "miss").Inc()
+	c.count(op, "miss")
 
 	go func() {
 		fctx, cancel := callCtx(context.WithoutCancel(ctx))
@@ -120,18 +132,22 @@ func wait(ctx context.Context, f *flight) (any, error) {
 }
 
 // store must be called with c.mu held.
-func (c *currencyCache) store(key, val any, ttl time.Duration) {
+func (c *ttlCache) store(key, val any, ttl time.Duration) {
 	if c.entries == nil {
 		c.entries = map[any]cachedValue{}
 	}
 	now := c.clock()
-	if len(c.entries) >= conversionMaxEntries {
+	limit := c.max
+	if limit == 0 {
+		limit = conversionMaxEntries
+	}
+	if len(c.entries) >= limit {
 		for k, e := range c.entries { // first drop what is stale
 			if !now.Before(e.until) {
 				delete(c.entries, k)
 			}
 		}
-		if len(c.entries) >= conversionMaxEntries {
+		if len(c.entries) >= limit {
 			clear(c.entries) // still full of live entries: start over rather than track recency
 		}
 	}
