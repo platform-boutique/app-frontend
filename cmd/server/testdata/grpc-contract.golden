@@ -1,0 +1,264 @@
+enum hipstershop.ProductSort.PRODUCT_SORT_NAME_ASC = 1
+enum hipstershop.ProductSort.PRODUCT_SORT_PRICE_ASC = 2
+enum hipstershop.ProductSort.PRODUCT_SORT_PRICE_DESC = 3
+enum hipstershop.ProductSort.PRODUCT_SORT_RATING_DESC = 4
+enum hipstershop.ProductSort.PRODUCT_SORT_UNSPECIFIED = 0
+enum hipstershop.orders.OrderStatus.ORDER_STATUS_DELIVERED = 5
+enum hipstershop.orders.OrderStatus.ORDER_STATUS_FAILED = 6
+enum hipstershop.orders.OrderStatus.ORDER_STATUS_PENDING = 1
+enum hipstershop.orders.OrderStatus.ORDER_STATUS_PLACED = 2
+enum hipstershop.orders.OrderStatus.ORDER_STATUS_PROCESSING = 3
+enum hipstershop.orders.OrderStatus.ORDER_STATUS_SHIPPED = 4
+enum hipstershop.orders.OrderStatus.ORDER_STATUS_UNSPECIFIED = 0
+field hipstershop.Ad.id = 3 optional string
+field hipstershop.Ad.redirect_url = 1 optional string
+field hipstershop.Ad.text = 2 optional string
+field hipstershop.AdRequest.context_keys = 1 repeated string
+field hipstershop.AdResponse.ads = 1 repeated hipstershop.Ad
+field hipstershop.AdStat.ad_id = 1 optional string
+field hipstershop.AdStat.clicks = 3 optional int64
+field hipstershop.AdStat.impressions = 2 optional int64
+field hipstershop.AddItemRequest.item = 2 optional hipstershop.CartItem
+field hipstershop.AddItemRequest.user_id = 1 optional string
+field hipstershop.AddReviewRequest.author_name = 2 optional string
+field hipstershop.AddReviewRequest.comment = 4 optional string
+field hipstershop.AddReviewRequest.product_id = 1 optional string
+field hipstershop.AddReviewRequest.rating = 3 optional int32
+field hipstershop.Address.city = 2 optional string
+field hipstershop.Address.country = 4 optional string
+field hipstershop.Address.state = 3 optional string
+field hipstershop.Address.street_address = 1 optional string
+field hipstershop.Address.zip_code = 5 optional int32
+field hipstershop.Cart.items = 2 repeated hipstershop.CartItem
+field hipstershop.Cart.user_id = 1 optional string
+field hipstershop.CartItem.product_id = 1 optional string
+field hipstershop.CartItem.quantity = 2 optional int32
+field hipstershop.Category.description = 3 optional string
+field hipstershop.Category.id = 1 optional string
+field hipstershop.Category.name = 2 optional string
+field hipstershop.Category.product_count = 4 optional int32
+field hipstershop.ChargeRequest.amount = 1 optional hipstershop.Money
+field hipstershop.ChargeRequest.credit_card = 2 optional hipstershop.CreditCardInfo
+field hipstershop.ChargeResponse.transaction_id = 1 optional string
+field hipstershop.CreditCardInfo.credit_card_cvv = 2 optional int32
+field hipstershop.CreditCardInfo.credit_card_expiration_month = 4 optional int32
+field hipstershop.CreditCardInfo.credit_card_expiration_year = 3 optional int32
+field hipstershop.CreditCardInfo.credit_card_number = 1 optional string
+field hipstershop.CurrencyConversionRequest.from = 1 optional hipstershop.Money
+field hipstershop.CurrencyConversionRequest.to_code = 2 optional string
+field hipstershop.EmptyCartRequest.user_id = 1 optional string
+field hipstershop.GetAdStatsResponse.stats = 1 repeated hipstershop.AdStat
+field hipstershop.GetCartRequest.user_id = 1 optional string
+field hipstershop.GetProductRequest.id = 1 optional string
+field hipstershop.GetQuoteRequest.address = 1 optional hipstershop.Address
+field hipstershop.GetQuoteRequest.items = 2 repeated hipstershop.CartItem
+field hipstershop.GetQuoteResponse.cost_usd = 1 optional hipstershop.Money
+field hipstershop.GetRatingSummaryRequest.product_ids = 1 repeated string
+field hipstershop.GetRatingSummaryResponse.summaries = 1 repeated hipstershop.RatingSummary
+field hipstershop.GetSupportedCurrenciesResponse.currency_codes = 1 repeated string
+field hipstershop.ListCategoriesResponse.categories = 1 repeated hipstershop.Category
+field hipstershop.ListProductsRequest.department = 1 optional string
+field hipstershop.ListProductsRequest.page = 4 optional int32
+field hipstershop.ListProductsRequest.page_size = 5 optional int32
+field hipstershop.ListProductsRequest.query = 2 optional string
+field hipstershop.ListProductsRequest.sort = 3 optional hipstershop.ProductSort
+field hipstershop.ListProductsResponse.page = 3 optional int32
+field hipstershop.ListProductsResponse.page_size = 4 optional int32
+field hipstershop.ListProductsResponse.products = 1 repeated hipstershop.Product
+field hipstershop.ListProductsResponse.total = 2 optional int32
+field hipstershop.ListRecommendationsRequest.product_ids = 2 repeated string
+field hipstershop.ListRecommendationsRequest.user_id = 1 optional string
+field hipstershop.ListRecommendationsResponse.product_ids = 1 repeated string
+field hipstershop.ListReviewsRequest.page = 2 optional int32
+field hipstershop.ListReviewsRequest.page_size = 3 optional int32
+field hipstershop.ListReviewsRequest.product_id = 1 optional string
+field hipstershop.ListReviewsResponse.average_rating = 3 optional double
+field hipstershop.ListReviewsResponse.reviews = 1 repeated hipstershop.Review
+field hipstershop.ListReviewsResponse.total = 2 optional int32
+field hipstershop.Money.currency_code = 1 optional string
+field hipstershop.Money.nanos = 3 optional int32
+field hipstershop.Money.units = 2 optional int64
+field hipstershop.OrderItem.cost = 2 optional hipstershop.Money
+field hipstershop.OrderItem.item = 1 optional hipstershop.CartItem
+field hipstershop.OrderResult.items = 5 repeated hipstershop.OrderItem
+field hipstershop.OrderResult.order_id = 1 optional string
+field hipstershop.OrderResult.shipping_address = 4 optional hipstershop.Address
+field hipstershop.OrderResult.shipping_cost = 3 optional hipstershop.Money
+field hipstershop.OrderResult.shipping_tracking_id = 2 optional string
+field hipstershop.PlaceOrderRequest.account_id = 7 optional string
+field hipstershop.PlaceOrderRequest.address = 3 optional hipstershop.Address
+field hipstershop.PlaceOrderRequest.credit_card = 6 optional hipstershop.CreditCardInfo
+field hipstershop.PlaceOrderRequest.email = 5 optional string
+field hipstershop.PlaceOrderRequest.idempotency_key = 8 optional string
+field hipstershop.PlaceOrderRequest.user_currency = 2 optional string
+field hipstershop.PlaceOrderRequest.user_id = 1 optional string
+field hipstershop.PlaceOrderResponse.order = 1 optional hipstershop.OrderResult
+field hipstershop.Product.brand = 7 optional string
+field hipstershop.Product.categories = 6 repeated string
+field hipstershop.Product.department = 15 optional string
+field hipstershop.Product.description = 3 optional string
+field hipstershop.Product.id = 1 optional string
+field hipstershop.Product.images = 13 repeated string
+field hipstershop.Product.name = 2 optional string
+field hipstershop.Product.picture = 4 optional string
+field hipstershop.Product.price_usd = 5 optional hipstershop.Money
+field hipstershop.Product.rating = 8 optional double
+field hipstershop.Product.review_count = 9 optional int32
+field hipstershop.Product.stock = 10 optional int32
+field hipstershop.Product.tags = 12 repeated string
+field hipstershop.Product.thumbnail = 14 optional string
+field hipstershop.Product.weight_grams = 11 optional int32
+field hipstershop.RatingSummary.average = 2 optional double
+field hipstershop.RatingSummary.count = 3 optional int32
+field hipstershop.RatingSummary.product_id = 1 optional string
+field hipstershop.RatingSummary.star_counts = 4 repeated int32
+field hipstershop.RecordClickRequest.ad_id = 1 optional string
+field hipstershop.Review.author_name = 3 optional string
+field hipstershop.Review.comment = 5 optional string
+field hipstershop.Review.created_at = 6 optional google.protobuf.Timestamp
+field hipstershop.Review.id = 1 optional string
+field hipstershop.Review.product_id = 2 optional string
+field hipstershop.Review.rating = 4 optional int32
+field hipstershop.SearchProductsRequest.query = 1 optional string
+field hipstershop.SearchProductsResponse.results = 1 repeated hipstershop.Product
+field hipstershop.SendOrderConfirmationRequest.email = 1 optional string
+field hipstershop.SendOrderConfirmationRequest.order = 2 optional hipstershop.OrderResult
+field hipstershop.ShipOrderRequest.address = 1 optional hipstershop.Address
+field hipstershop.ShipOrderRequest.items = 2 repeated hipstershop.CartItem
+field hipstershop.ShipOrderResponse.tracking_id = 1 optional string
+field hipstershop.inventory.CommitRequest.order_id = 1 optional string
+field hipstershop.inventory.GetStockRequest.product_ids = 1 repeated string
+field hipstershop.inventory.GetStockResponse.levels = 1 repeated hipstershop.inventory.StockLevel
+field hipstershop.inventory.ReleaseRequest.order_id = 1 optional string
+field hipstershop.inventory.ReserveItem.product_id = 1 optional string
+field hipstershop.inventory.ReserveItem.quantity = 2 optional int32
+field hipstershop.inventory.ReserveRequest.items = 2 repeated hipstershop.inventory.ReserveItem
+field hipstershop.inventory.ReserveRequest.order_id = 1 optional string
+field hipstershop.inventory.ReserveResponse.reserved = 1 optional bool
+field hipstershop.inventory.ReserveResponse.shortages = 2 repeated hipstershop.inventory.Shortage
+field hipstershop.inventory.Shortage.available = 3 optional int32
+field hipstershop.inventory.Shortage.product_id = 1 optional string
+field hipstershop.inventory.Shortage.requested = 2 optional int32
+field hipstershop.inventory.StockLevel.available = 2 optional int32
+field hipstershop.inventory.StockLevel.product_id = 1 optional string
+field hipstershop.mailbox.GetOrderEmailRequest.email_id = 1 optional string
+field hipstershop.mailbox.GetOrderEmailRequest.order_id = 2 optional string
+field hipstershop.mailbox.ListOrderEmailsRequest.order_ids = 1 repeated string
+field hipstershop.mailbox.ListOrderEmailsResponse.emails = 1 repeated hipstershop.mailbox.OrderEmail
+field hipstershop.mailbox.OrderEmail.created_at = 7 optional google.protobuf.Timestamp
+field hipstershop.mailbox.OrderEmail.html_body = 5 optional string
+field hipstershop.mailbox.OrderEmail.id = 1 optional string
+field hipstershop.mailbox.OrderEmail.order_id = 2 optional string
+field hipstershop.mailbox.OrderEmail.subject = 4 optional string
+field hipstershop.mailbox.OrderEmail.text_body = 6 optional string
+field hipstershop.mailbox.OrderEmail.to = 3 optional string
+field hipstershop.orders.Address.city = 2 optional string
+field hipstershop.orders.Address.country = 4 optional string
+field hipstershop.orders.Address.state = 3 optional string
+field hipstershop.orders.Address.street_address = 1 optional string
+field hipstershop.orders.Address.zip_code = 5 optional int32
+field hipstershop.orders.ClaimOrdersRequest.session_id = 1 optional string
+field hipstershop.orders.ClaimOrdersRequest.user_id = 2 optional string
+field hipstershop.orders.ClaimOrdersResponse.claimed = 1 optional int32
+field hipstershop.orders.ConfirmOrderRequest.order_id = 1 optional string
+field hipstershop.orders.ConfirmOrderRequest.payment_transaction_id = 3 optional string
+field hipstershop.orders.ConfirmOrderRequest.shipping_tracking_id = 2 optional string
+field hipstershop.orders.CreateOrderRequest.email = 4 optional string
+field hipstershop.orders.CreateOrderRequest.items = 6 repeated hipstershop.orders.OrderItem
+field hipstershop.orders.CreateOrderRequest.order_id = 1 optional string
+field hipstershop.orders.CreateOrderRequest.session_id = 2 optional string
+field hipstershop.orders.CreateOrderRequest.shipping_address = 5 optional hipstershop.orders.Address
+field hipstershop.orders.CreateOrderRequest.shipping_cost = 7 optional hipstershop.orders.Money
+field hipstershop.orders.CreateOrderRequest.total = 8 optional hipstershop.orders.Money
+field hipstershop.orders.CreateOrderRequest.user_id = 3 optional string
+field hipstershop.orders.FailOrderRequest.order_id = 1 optional string
+field hipstershop.orders.FailOrderRequest.reason = 2 optional string
+field hipstershop.orders.GetOrderRequest.order_id = 1 optional string
+field hipstershop.orders.GetOrderRequest.session_id = 2 optional string
+field hipstershop.orders.GetOrderRequest.user_id = 3 optional string
+field hipstershop.orders.ListOrdersRequest.page = 3 optional int32
+field hipstershop.orders.ListOrdersRequest.page_size = 4 optional int32
+field hipstershop.orders.ListOrdersRequest.placed_only = 5 optional bool
+field hipstershop.orders.ListOrdersRequest.session_id = 1 optional string
+field hipstershop.orders.ListOrdersRequest.user_id = 2 optional string
+field hipstershop.orders.ListOrdersResponse.orders = 1 repeated hipstershop.orders.Order
+field hipstershop.orders.ListOrdersResponse.total = 2 optional int32
+field hipstershop.orders.Money.currency_code = 1 optional string
+field hipstershop.orders.Money.nanos = 3 optional int32
+field hipstershop.orders.Money.units = 2 optional int64
+field hipstershop.orders.Order.created_at = 13 optional google.protobuf.Timestamp
+field hipstershop.orders.Order.delivered_at = 17 optional google.protobuf.Timestamp
+field hipstershop.orders.Order.email = 4 optional string
+field hipstershop.orders.Order.evaluated_at = 19 optional google.protobuf.Timestamp
+field hipstershop.orders.Order.failed_at = 18 optional google.protobuf.Timestamp
+field hipstershop.orders.Order.failure_reason = 10 optional string
+field hipstershop.orders.Order.items = 6 repeated hipstershop.orders.OrderItem
+field hipstershop.orders.Order.order_id = 1 optional string
+field hipstershop.orders.Order.payment_transaction_id = 12 optional string
+field hipstershop.orders.Order.placed_at = 14 optional google.protobuf.Timestamp
+field hipstershop.orders.Order.processing_at = 15 optional google.protobuf.Timestamp
+field hipstershop.orders.Order.session_id = 2 optional string
+field hipstershop.orders.Order.shipped_at = 16 optional google.protobuf.Timestamp
+field hipstershop.orders.Order.shipping_address = 5 optional hipstershop.orders.Address
+field hipstershop.orders.Order.shipping_cost = 7 optional hipstershop.orders.Money
+field hipstershop.orders.Order.shipping_tracking_id = 11 optional string
+field hipstershop.orders.Order.status = 9 optional hipstershop.orders.OrderStatus
+field hipstershop.orders.Order.total = 8 optional hipstershop.orders.Money
+field hipstershop.orders.Order.user_id = 3 optional string
+field hipstershop.orders.OrderItem.name = 2 optional string
+field hipstershop.orders.OrderItem.picture = 5 optional string
+field hipstershop.orders.OrderItem.product_id = 1 optional string
+field hipstershop.orders.OrderItem.quantity = 3 optional int32
+field hipstershop.orders.OrderItem.unit_price = 4 optional hipstershop.orders.Money
+field hipstershop.users.AuthResponse.expires_at = 3 optional google.protobuf.Timestamp
+field hipstershop.users.AuthResponse.token = 2 optional string
+field hipstershop.users.AuthResponse.user = 1 optional hipstershop.users.User
+field hipstershop.users.GetSessionRequest.token = 1 optional string
+field hipstershop.users.LoginRequest.email = 1 optional string
+field hipstershop.users.LoginRequest.password = 2 optional string
+field hipstershop.users.LogoutRequest.token = 1 optional string
+field hipstershop.users.RegisterRequest.email = 1 optional string
+field hipstershop.users.RegisterRequest.name = 3 optional string
+field hipstershop.users.RegisterRequest.password = 2 optional string
+field hipstershop.users.User.created_at = 4 optional google.protobuf.Timestamp
+field hipstershop.users.User.email = 2 optional string
+field hipstershop.users.User.id = 1 optional string
+field hipstershop.users.User.name = 3 optional string
+rpc hipstershop.AdService/GetAdStats(hipstershop.GetAdStatsRequest) returns (hipstershop.GetAdStatsResponse)
+rpc hipstershop.AdService/GetAds(hipstershop.AdRequest) returns (hipstershop.AdResponse)
+rpc hipstershop.AdService/RecordClick(hipstershop.RecordClickRequest) returns (hipstershop.RecordClickResponse)
+rpc hipstershop.CartService/AddItem(hipstershop.AddItemRequest) returns (hipstershop.Empty)
+rpc hipstershop.CartService/EmptyCart(hipstershop.EmptyCartRequest) returns (hipstershop.Empty)
+rpc hipstershop.CartService/GetCart(hipstershop.GetCartRequest) returns (hipstershop.Cart)
+rpc hipstershop.CheckoutService/PlaceOrder(hipstershop.PlaceOrderRequest) returns (hipstershop.PlaceOrderResponse)
+rpc hipstershop.CurrencyService/Convert(hipstershop.CurrencyConversionRequest) returns (hipstershop.Money)
+rpc hipstershop.CurrencyService/GetSupportedCurrencies(hipstershop.Empty) returns (hipstershop.GetSupportedCurrenciesResponse)
+rpc hipstershop.EmailService/SendOrderConfirmation(hipstershop.SendOrderConfirmationRequest) returns (hipstershop.Empty)
+rpc hipstershop.PaymentService/Charge(hipstershop.ChargeRequest) returns (hipstershop.ChargeResponse)
+rpc hipstershop.ProductCatalogService/GetProduct(hipstershop.GetProductRequest) returns (hipstershop.Product)
+rpc hipstershop.ProductCatalogService/ListCategories(hipstershop.Empty) returns (hipstershop.ListCategoriesResponse)
+rpc hipstershop.ProductCatalogService/ListProducts(hipstershop.Empty) returns (hipstershop.ListProductsResponse)
+rpc hipstershop.ProductCatalogService/ListProductsFiltered(hipstershop.ListProductsRequest) returns (hipstershop.ListProductsResponse)
+rpc hipstershop.ProductCatalogService/SearchProducts(hipstershop.SearchProductsRequest) returns (hipstershop.SearchProductsResponse)
+rpc hipstershop.RecommendationService/ListRecommendations(hipstershop.ListRecommendationsRequest) returns (hipstershop.ListRecommendationsResponse)
+rpc hipstershop.ReviewService/AddReview(hipstershop.AddReviewRequest) returns (hipstershop.Review)
+rpc hipstershop.ReviewService/GetRatingSummary(hipstershop.GetRatingSummaryRequest) returns (hipstershop.GetRatingSummaryResponse)
+rpc hipstershop.ReviewService/ListReviews(hipstershop.ListReviewsRequest) returns (hipstershop.ListReviewsResponse)
+rpc hipstershop.ShippingService/GetQuote(hipstershop.GetQuoteRequest) returns (hipstershop.GetQuoteResponse)
+rpc hipstershop.ShippingService/ShipOrder(hipstershop.ShipOrderRequest) returns (hipstershop.ShipOrderResponse)
+rpc hipstershop.inventory.InventoryService/Commit(hipstershop.inventory.CommitRequest) returns (hipstershop.inventory.CommitResponse)
+rpc hipstershop.inventory.InventoryService/GetStock(hipstershop.inventory.GetStockRequest) returns (hipstershop.inventory.GetStockResponse)
+rpc hipstershop.inventory.InventoryService/Release(hipstershop.inventory.ReleaseRequest) returns (hipstershop.inventory.ReleaseResponse)
+rpc hipstershop.inventory.InventoryService/Reserve(hipstershop.inventory.ReserveRequest) returns (hipstershop.inventory.ReserveResponse)
+rpc hipstershop.mailbox.MailboxService/GetOrderEmail(hipstershop.mailbox.GetOrderEmailRequest) returns (hipstershop.mailbox.OrderEmail)
+rpc hipstershop.mailbox.MailboxService/ListOrderEmails(hipstershop.mailbox.ListOrderEmailsRequest) returns (hipstershop.mailbox.ListOrderEmailsResponse)
+rpc hipstershop.orders.OrderService/ClaimOrders(hipstershop.orders.ClaimOrdersRequest) returns (hipstershop.orders.ClaimOrdersResponse)
+rpc hipstershop.orders.OrderService/ConfirmOrder(hipstershop.orders.ConfirmOrderRequest) returns (hipstershop.orders.Order)
+rpc hipstershop.orders.OrderService/CreateOrder(hipstershop.orders.CreateOrderRequest) returns (hipstershop.orders.Order)
+rpc hipstershop.orders.OrderService/FailOrder(hipstershop.orders.FailOrderRequest) returns (hipstershop.orders.Order)
+rpc hipstershop.orders.OrderService/GetOrder(hipstershop.orders.GetOrderRequest) returns (hipstershop.orders.Order)
+rpc hipstershop.orders.OrderService/ListOrders(hipstershop.orders.ListOrdersRequest) returns (hipstershop.orders.ListOrdersResponse)
+rpc hipstershop.users.UserService/GetSession(hipstershop.users.GetSessionRequest) returns (hipstershop.users.User)
+rpc hipstershop.users.UserService/Login(hipstershop.users.LoginRequest) returns (hipstershop.users.AuthResponse)
+rpc hipstershop.users.UserService/Logout(hipstershop.users.LogoutRequest) returns (hipstershop.users.LogoutResponse)
+rpc hipstershop.users.UserService/Register(hipstershop.users.RegisterRequest) returns (hipstershop.users.AuthResponse)

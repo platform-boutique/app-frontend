@@ -291,8 +291,8 @@ func TestFaroPage_NoInlineScriptAdded(t *testing.T) {
 	off := inlineScripts(renderHomeOff(t))
 	withFaro(t, testFaroSettings())
 	on := inlineScripts(renderHome(t, requestWithContext(http.MethodGet, "/", "")))
-	// The page already has two inline scripts of its own (theme, in header and footer; unrelated to
-	// Faro). Faro must not add a third: its settings are a data block, everything else is a file.
+	// The pages have no inline script of their own any more (the theme and currency scripts are files,
+	// see csp_test.go); Faro must not add one: its settings are a data block, everything else is a file.
 	if len(on) != len(off) {
 		t.Errorf("Faro on adds inline scripts: %d inline scripts on, %d off", len(on), len(off))
 	}

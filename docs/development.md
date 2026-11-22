@@ -4,22 +4,25 @@
 
 Requirements: Go 1.26 (`GOTOOLCHAIN=auto` fetches the `go.mod` version; the host has Go 1.22), Docker for the image, Python 3.12 for the docs check. The commands below are the ones the shared pipeline (`platform-demo-workflows`) runs, so a failure can be reproduced without pushing.
 
-| Step | Command | Result on 2026-11-21 |
+| Step | Command | Result |
 |---|---|---|
-| Format | `gofmt -l .` | run, no files listed |
-| Vet and unit tests | `go vet ./... && go test -race -count=1 ./...` | run, passed (4 packages with tests) |
-| Lint | `golangci-lint run ./...` (the repo's `.golangci.yaml`; CI pins golangci-lint v2.14.0) | not run (golangci-lint is not installed on the host) |
-| Vulnerabilities and security | `govulncheck ./...`, `gosec -exclude-generated ./...` | not run |
-| Vet with the e2e tag | `go vet -tags e2e ./...` | run, no findings |
-| End-to-end tests | `go test -tags e2e ./tests/e2e/` against a running shop (not run by CI) | not run |
-| Faro check in a real browser | `tests/faro/run.sh` (needs the compose stack, Node and Playwright; places one real order) | not run |
-| Colour contrast | `python3 -I tools/check-contrast.py` | run, all pairs pass |
+| Format | `gofmt -l .` | 2026-11-22: run on the final tree, no files listed |
+| Vet and unit tests | `go vet ./... && go test -race -count=1 ./...` | 2026-11-22: run on the final tree, passed (4 packages with tests, `-race`); the obs test `TestGRPCRequestPathLogsCarryTraceIDs` 50 times with `-race`: passed; coverage with `-cover`: cmd/server 89.4%, internal/obs 88.2%, internal/validator 36.4%, money 68.8% (reported here only: the pipeline does not print it, no gate) |
+| Lint | `golangci-lint run ./...` (the repo's `.golangci.yaml`; CI pins golangci-lint v2.14.0) | 2026-11-22: run with golangci-lint v2.14.0 (docker image) with `--build-tags e2e --max-same-issues 0` (covers all files): 0 issues, after fixing 3 `errcheck` findings in `cmd/server/budget_test.go` and the unchecked `resp.Body.Close` calls in `tests/e2e`; the run without the tag was not repeated after the fix |
+| Vulnerabilities and security | `govulncheck ./...`, `gosec -exclude-generated ./...` | 2026-11-22: govulncheck: no vulnerabilities; gosec: 0 issues (34 files) |
+| Vet with the e2e tag | `go vet -tags e2e ./...` | 2026-11-22: run, no findings |
+| End-to-end tests | `FRONTEND_ADDR=http://localhost:8080 go test -tags e2e ./tests/e2e/` against a running shop (not run by CI; `FRONTEND_ADDR` needs the `http://` scheme) | 2026-11-22: run against the whole local shop with the final image, 16 tests passed |
+| Faro check in a real browser | `tests/faro/run.sh` (needs the compose stack, Node and Playwright; places one real order) | 2026-11-22: run against the whole shop with the final image, all four parts passed (Faro and server telemetry on, telemetry off, Faro off, a bad `FARO_COLLECTOR_URL` stops the start). The paging wait of `faro-check.mjs` was registered after the click and missed a fast answer (failed with telemetry on); it is now registered before the click, and `run.sh` pass 1 sets `OTEL_SDK_DISABLED=false` (the compose environment switches telemetry off) |
+| CSP in a real browser | `tests/faro/csp-check.mjs` against a running frontend with Faro on (`MODE=report-only` or `MODE=enforce`; Node and Playwright with Chromium, no other part of the stack) | 2026-11-22: run against the final container image on the shop network (real backends), both modes: all checks passed, zero violations on the pages checked; the only report was the deliberate control script. The shop home, a product page and the cart (headless Chromium via the stack frontend) carry the `Content-Security-Policy-Report-Only` header and raised no violation event and no console error |
+| Colour contrast | `python3 -I tools/check-contrast.py` | 2026-11-22: run, all pairs pass |
 | Proto | the `protoc` commands for the order, user, inventory and mailbox contracts are in the README sections Orders, Accounts, Live stock and Mailbox (protoc 3.21.12, protoc-gen-go 1.36.11, protoc-gen-go-grpc 1.6.1); `demo.proto` and `reviews.proto` are in `proto/`, stubs in `genproto/` | not run. Changes are additive only, server first |
-| Image | `docker build -t platform-demo/frontend:local .` | not run today |
-| Image scan | `trivy image --severity CRITICAL,HIGH --exit-code 1 platform-demo/frontend:local` | not run today |
-| Secret scan | `pre-commit run --all-files` (`.pre-commit-config.yaml`, gitleaks) or `gitleaks git --redact` | run with the gitleaks binary of the pre-commit cache (`gitleaks git --redact`, full history, 113 commits): no leaks found |
-| Workflow lint | `actionlint` | run (actionlint 1.7.12), no findings |
-| Docs | `mkdocs build --strict` (mkdocs 1.6.1 + mkdocs-techdocs-core 1.7.1, Python 3.12 venv) and the link check `python3 -I tools/check-md-links.py .` from `platform-demo-workflows` (relative links in `README.md` and `docs/`) | run, both passed |
+| gRPC contract (golden) | `go test ./cmd/server -run TestGRPCContract_Golden` (part of the unit tests; update on purpose with `-update-contract`) | 2026-11-22: run, passed |
+| Image | `docker build --platform linux/amd64 -t platform-demo/frontend:local .` | 2026-11-22: built (amd64, base images by digest), 76.3 MB, user 10001:10001, exec-form HEALTHCHECK, healthy in the shop |
+| Image scan | `trivy image --severity CRITICAL,HIGH --exit-code 1 platform-demo/frontend:local` | 2026-11-22: Trivy 0.76.1, exit 0, CRITICAL/HIGH 0 in the alpine 3.24.4 packages and in the Go binary |
+| Secret scan | `pre-commit run --all-files` (`.pre-commit-config.yaml`, gitleaks) or `gitleaks git --redact` | 2026-11-22: gitleaks full history (126 commits): no leaks |
+| Workflow lint | `actionlint` | 2026-11-21: run (actionlint 1.7.12), no findings |
+| Docs | `mkdocs build --strict` (mkdocs 1.6.1 + mkdocs-techdocs-core 1.7.1, Python 3.12 venv) and the link check `python3 -I tools/check-md-links.py .` from `platform-demo-workflows` (relative links in `README.md` and `docs/`) | 2026-11-22: both passed (24 relative links in 18 pages, 0 broken) |
+| Whole shop | `local/smoke.sh` with the final image in the compose stack | 2026-11-22: `SMOKE PASSED`, 87 steps, three runs in a row (done twice, 6 runs) |
 
 ## Running locally
 
@@ -84,7 +87,7 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 │   └── img/products/    # product photos
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
 ├── tests/faro/          # real-browser check of the Faro RUM wiring (run.sh, not run by CI) and its throwaway OTLP sink
-├── .github/workflows/   # ci.yaml (pull requests), release.yaml (v* tags / manual) - callers of platform-demo-workflows
+├── .github/workflows/   # ci.yaml (pull requests, merge button), publish.yaml (image, dev/stage/prod promotion) - callers of platform-demo-workflows
 ├── Dockerfile
 └── go.mod / go.sum / .golangci.yaml
 ```

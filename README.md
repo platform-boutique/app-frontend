@@ -43,12 +43,13 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/logout` | POST | Sign out: `Logout` at user-service (best effort), expire `shop_auth`, `303` to `/`. `Sec-Fetch-Site: cross-site`: `403` |
 | `/logout` | GET | Expire all cookies (including `shop_auth`, after a best-effort `Logout` call) and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
-| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`). GET/HEAD only. Never sets a cookie. Every response has `Cache-Control` (`public, max-age=86400` for `img/` and `js/vendor/`, `public, max-age=300, must-revalidate` for the rest: nothing is fingerprinted, so nothing is `immutable`), `ETag` and `Last-Modified` (`304` on `If-None-Match` / `If-Modified-Since`) and `X-Content-Type-Options: nosniff`. Text types of 256 bytes or more (css, js, svg, json, html, txt, xml) are sent gzip-compressed to clients that accept it (`Vary: Accept-Encoding`, the compressed body is kept in memory, at most 64 files, and recomputed when size or mtime change; the ETag of the gzip variant ends in `-gzip`); images (webp) are never compressed. Brotli is not offered (would need a new dependency). Directories are `404` (no listing, no index) |
+| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js`, `js/theme-init.js` (blocking, in the head), `js/shell.js` (theme toggle and currency select), `js/gallery.js`, `js/checkout.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`). GET/HEAD only. Never sets a cookie. Every response has `Cache-Control` (`public, max-age=86400` for `img/` and `js/vendor/`, `public, max-age=300, must-revalidate` for the rest: nothing is fingerprinted, so nothing is `immutable`), `ETag` and `Last-Modified` (`304` on `If-None-Match` / `If-Modified-Since`) and `X-Content-Type-Options: nosniff`. Text types of 256 bytes or more (css, js, svg, json, html, txt, xml) are sent gzip-compressed to clients that accept it (`Vary: Accept-Encoding`, the compressed body is kept in memory, at most 64 files, and recomputed when size or mtime change; the ETag of the gzip variant ends in `-gzip`); images (webp) are never compressed. Brotli is not offered (would need a new dependency). Directories are `404` (no listing, no index) |
 | `/favicon.ico` | GET | The logo (`static/favicon.svg`, `image/svg+xml`) with the `/static/` headers and no cookie |
 | `/healthz` | GET | Liveness: `200 ok`, no dependency checked |
 | `/readyz` | GET | Readiness: `200 ok` when the connections to product-catalog, currency and cart are READY, else `503` with `not ready: <backend names>` (error text of the connection is never shown). Waits at most 1.5 s, starts the connection if the channel is idle. The other backends are left out on purpose: a failure of recommendation, ad, shipping, checkout or an optional service degrades or fails single pages, and taking every pod out of the Service would turn that into a total outage |
 | `/version` | GET | JSON `{"service","version","commit","build_time"}`; version from `SERVICE_VERSION`, ldflags or the embedded VCS data, `build_time` from ldflags `obs.BuildTime`, else the VCS commit time, else `unknown` |
 | `/_healthz` | GET | Liveness (`ok`), kept for compose, the e2e tests and `tests/faro/run.sh`; same handler as `/healthz` |
+| `/csp-report` | POST | Receiver of the browsers' Content-Security-Policy violation reports (`application/csp-report` or `application/reports+json`, at most 16 KiB, answers `204`; `400` for something that is not a report, `405` for other methods). Counted in `frontend_csp_reports_total{directive}`; a log line for at most 10 reports per 10 s. No session cookie, no user lookup, no policy header. See "Content-Security-Policy" |
 | `/robots.txt` | GET | `Disallow: /` |
 
 **Supported currencies** (whitelist in code, intersected with what `currency-service` offers): `USD`, `EUR`, `CAD`, `JPY`, `GBP`, `TRY`. Default is `USD`.
@@ -57,11 +58,11 @@ All routes are prefixed with `BASE_URL` (empty by default).
 
 | Page | Calls |
 |---|---|
-| Home | currency (list + convert per product, both through the in-process cache, see "Performance"), product-catalog (`ListCategories` + `ListProductsFiltered`, 24 per page), inventory (ONE `GetStock` with the ids of the page, 1 s deadline, failures ignored), cart (get, then product-catalog `GetProduct` per cart line for the header count), ad (100 ms deadline, failures ignored), review (ONE `GetRatingSummary` with the ids of the page, 400 ms deadline, failures ignored) |
-| Product | product-catalog (get), inventory (ONE `GetStock` for the product, 1 s deadline, failures ignored), currency, cart, recommendation → product-catalog (up to 4), ad, review (`ListReviews`, 5 per page, and ONE `GetRatingSummary` for the rating bars, 400 ms deadline, failures ignored) |
+| Home | currency (list + convert per product, both through the in-process cache, see "Performance"), product-catalog (`ListCategories` + `ListProductsFiltered`, 24 per page), inventory (ONE `GetStock` with the ids of the page, 1 s deadline, failures ignored), cart (get, then product-catalog `GetProduct` per cart line for the header count, through the 30 s product cache), ad (100 ms deadline, failures ignored), review (ONE `GetRatingSummary` with the ids of the page, 400 ms deadline, failures ignored) |
+| Product | product-catalog (get), inventory (ONE `GetStock` for the product, 1 s deadline, failures ignored), currency, cart, recommendation → product-catalog (up to 4, through the product cache), ad, review (`ListReviews`, 5 per page, and ONE `GetRatingSummary` for the rating bars, 400 ms deadline, failures ignored) |
 | Ad click | ad (`RecordClick`, 1 s deadline, failures ignored); nothing else |
 | Post review | product-catalog (get, the product must exist), review (`AddReview`, 2 s deadline) |
-| Cart | cart (get), shipping (quote with nil address), currency, product-catalog, inventory (ONE `GetStock` with the ids of the lines, 1 s deadline, failures ignored), recommendation |
+| Cart | cart (get), shipping (quote with nil address), currency, product-catalog (`GetProduct` per line and per recommended id, parallel, through the product cache), inventory (ONE `GetStock` with the ids of the lines, 1 s deadline, failures ignored), recommendation |
 | Checkout | checkout (PlaceOrder), then recommendation + currency for the confirmation page |
 | Orders / order tracking | order (`ListOrders` / `GetOrder`, 1.5 s deadline) and, for the header navigation only, the cached catalog category list |
 | Emails / email detail | order (`ListOrders` / `GetOrder`, 1.5 s deadline), then mailbox (`ListOrderEmails` / `GetOrderEmail`, 1.5 s deadline) and the cached catalog category list for the header navigation |
@@ -69,6 +70,20 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | Register / sign in | user (`Register` / `Login`, 5 s deadline), then order (`ClaimOrders`, 1.5 s) and cart (`GetCart`, product-catalog `GetProduct` per line, inventory ONE `GetStock` for all lines, `AddItem`, `EmptyCart`) |
 | Every request with a `shop_auth` cookie | user (`GetSession`, 1 s deadline, once per request; not for `/static`, `/favicon.ico`, `/healthz`, `/_healthz`, `/readyz`, `/version`, `/robots.txt`) |
 | Account | nothing of its own: the identity comes from the request |
+
+### RPC and latency budget per page
+
+**RPCs, measured.** `TestRPCBudgetPerPage` (`cmd/server/budget_test.go`) serves each page through the real handlers against in-process fakes of every backend and counts every backend RPC (gRPC server interceptor; the review, inventory and currency fakes count at the client). Setup: cart of 3 lines, recommendation-service answers 5 ids (4 are used), display currency EUR, a full listing page of 24 cards (23 distinct prices), reviews and inventory on. "Cold" = every cache empty (first request after a start or after the TTLs), "warm" = the next request. The test fails when a page makes a different number of calls, so a new call has to change this table on purpose.
+
+| Page | Cold | Warm | What is left when warm |
+|---|---|---|---|
+| Home (`/`) | 33 | 6 | cart, categories, listing, ads, stock, rating summaries (1 call each) |
+| Product (`/product/{id}`) | 17 | 8 | product, cart, categories, recommendations, ads, stock, rating summary, review list (1 call each) |
+| Cart (`/cart`) | 16 | 4 | cart, shipping quote, stock, recommendations (1 call each) |
+
+The cold column is made of the supported-currency list (1) and the price conversions (home 23, product 1, cart 3), plus the product lookups: home 3 (cart lines), product 8 (the product itself, 3 cart lines, 4 recommended), cart 7 (3 lines, 4 recommended). The warm column has none of them except the product page's own `GetProduct`. Before the product cache every request made those product lookups: home 3, product 8, cart 7 calls, warm or not (cart page warm: 11 instead of 4). The catalog has no batch RPC and none was added (no proto change); the lookups run in parallel.
+
+**Latency, computed not measured.** Every call has a deadline (see "Deadlines") and the stages of a page run one after another with the calls inside a stage in parallel, so the worst case (every call of a stage ending at its deadline) is the sum of the slowest call of each stage: home about 12 s (categories/currencies/cart 3 s, listing 3 s, prices 3 s, header cart count 3 s, ad 0.1 s), product about 12 s (first stage 3 s, second stage 6 s because the recommendations call the catalog after the recommender, header count 3 s, ad 0.1 s), cart about 13 s (first stage 3 s, cart lines 3 s, shipping quote and its conversion or recommendations 6 s, navigation 1 s). All of them are inside the server's 30 s `WriteTimeout`. These are upper bounds from the constants, not what a visitor sees: the real latency per route is `http_request_duration_seconds{route}` (the `frontend-overview` dashboard). **Not measured:** a latency distribution against the real backends (the compose stack was not run for this).
 
 ### Errors
 
@@ -127,6 +142,7 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 | `PPROF_ADDR` | No | unset (no pprof) | `host:port` of a separate pprof listener, e.g. `127.0.0.1:6060`. Off unless set; never expose it. pprof is never served on the metrics port |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn` or `error`; anything else falls back to `info` with a warning |
 | `SERVICE_VERSION` | No | build info, else `dev` | `service.version`, the `version` log field and the `build_info` label. Fallbacks in order: ldflags `-X <module>/internal/obs.Version=...` (and `.Commit=`, `.BuildTime=`), the VCS revision Go embeds in the binary (12 characters, `-dirty` if modified), `dev` |
+| `HOSTNAME` | No | the OS hostname | `service.instance.id` of every signal (the pod name in Kubernetes, where the kubelet sets it); read by `internal/obs`, not something to set by hand |
 | `DEPLOYMENT_ENVIRONMENT` | No | `local` | `deployment.environment` on every signal and the Pyroscope tag `environment` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs**, e.g. `http://alloy:4317`. Telemetry is on only if this is a valid absolute http(s) URL; empty or malformed means off (one warning, never a crash). The legacy `COLLECTOR_SERVICE_ADDR` and `ENABLE_TRACING` are no longer read |
 | `OTEL_SDK_DISABLED` | No | unset | `true` (trimmed, case-insensitive) forces everything off: OTLP export and profiling, even if an endpoint or `PYROSCOPE_ADDR` is set |
@@ -141,6 +157,7 @@ Every backend call has a deadline so that a hung service ends in a `503` page in
 | `FARO_APP_NAME` | No | `everly-frontend` | Faro `app.name` (at most 128 characters) |
 | `FARO_APP_VERSION` | No | `SERVICE_VERSION`, else build info, else `dev` | Faro `app.version` (the same version the server reports) |
 | `FARO_ENV` | No | `local` | Faro `app.environment` |
+| `CSP_MODE` | No | `report-only` | Content-Security-Policy: `report-only` (header `Content-Security-Policy-Report-Only`, nothing is blocked), `enforce` (blocking) or `off` (no header). Any other value stops the process at start. See "Content-Security-Policy" |
 | `FARO_SESSION_SAMPLE_RATE` | No | `1` | Share of browser sessions that report, a number from 0 to 1 (checked at start) |
 
 Notes:
@@ -190,7 +207,7 @@ Sign-in comes from `user-service` (proto copied to `proto/users/users.proto`, st
 - **Header and footer:** a "Sign in" link (always with its text) or the name (text from 720 px, an icon below) linking to `/account`, next to the Orders link; footer link too. Nothing is shown when accounts are off.
 - **Degradation:** like reviews and orders (lazy connection); see the `USER_SERVICE_ADDR` row and the identity paragraph above. `GET /logout` (wipe the anonymous cookies) also calls `Logout` best effort and expires `shop_auth`.
 - **Not in this demo:** password reset, e-mail verification, "remember me" choices, changing the name or password.
-- **Local compose:** `local/compose.yaml` does not wire `USER_SERVICE_ADDR` or a `user-service` yet; the integrator does that. Until then the default `user-service:8086` is unreachable in compose, so the shop works and the account pages answer `503` (or set `USER_SERVICE_ADDR=` to hide them).
+- **Local compose:** `local/compose.yaml` wires `USER_SERVICE_ADDR=user-service:8086`. Without a reachable user-service the shop works and the account pages answer `503` (or set `USER_SERVICE_ADDR=` to hide them).
 - **Checked:** `GOTOOLCHAIN=auto go vet ./... && go test -race -count=1 ./...`, `gofmt -l`, golangci-lint v2.11.4, `go vet -tags e2e ./...`, all against fakes (in-memory user client, fake order client, per-user fake cart): register and login set the cookie with the flags, wrong password / unknown e-mail / malformed e-mail give the same `422` page, duplicate e-mail `422`, rate limit `429` + `Retry-After`, inline validation, logout (POST and GET) expires the cookie and calls `Logout`, invalid and stale cookies are anonymous, `GetSession` once per request and never without a cookie, claim called with (session id, user id), cart merge with stock caps and failure cases, `account_id` in checkout only when signed in, orders by user or session, `GetOrder` guard, unsafe `next` values (`//evil.com`, `/\evil.com`, `https://evil.com`, control characters), accounts off, service down, no token or password in any page, redirect or log line.
 - **Not run:** against the real user-service, the real order-service `ClaimOrders` or checkout with `account_id`; the compose stack; a browser (no screenshots yet, the integrator takes them); `-tags e2e` tests (only vetted); a screen reader.
 
@@ -204,7 +221,7 @@ Stock comes from `inventory-service` (proto copied verbatim to `proto/inventory/
 - **Limits:** add to cart refuses (`422`, readable message) a product with nothing left and a quantity that, together with what the cart already holds, is more than the live stock ("Only 4 of Pan in stock, and 3 already in your cart."). The cart page marks a line that holds more than is left or is sold out and a line that fits with 5 or fewer left ("Only N left"). The Place order button stays enabled: checkout is the one that decides.
 - **Cart merge at sign-in:** the anonymous lines are capped by the live stock minus what the user's cart already holds, with ONE `GetStock` for all lines (the catalogue's stock when the service does not answer).
 - **Idempotency key:** the cart page renders a hidden `idempotency_key` (16 bytes from `crypto/rand`, 22 URL-safe characters) in the checkout form. It is made when the form is rendered, not per submit, so a double click or a reload of the POST sends the same key and checkout answers with the same order. A failed attempt's key is spent (checkout answers `this attempt failed, start the checkout again`), so every checkout error page links back to the cart, and the cart page is `no-store` so Back does not restore the old form.
-- **Local compose:** `local/compose.yaml` does not wire `INVENTORY_SERVICE_ADDR` or an `inventory-service` yet; the integrator does that. Until then the default `inventory-service:8087` is unreachable in compose and the catalogue's stock is used (a page can wait up to 1 s for the failed call; or set `INVENTORY_SERVICE_ADDR=` to skip it).
+- **Local compose:** `local/compose.yaml` wires `INVENTORY_SERVICE_ADDR=inventory-service:8087`. If the service is unreachable the catalogue's stock is used (a page can wait up to 1 s for the failed call; or set `INVENTORY_SERVICE_ADDR=` to skip it).
 - **Checked:** `GOTOOLCHAIN=auto go vet ./...`, `go vet -tags e2e ./...`, `gofmt -l .`, `go test -race -count=1 ./...`, golangci-lint (the repo's `.golangci.yaml`), all against a fake in-memory inventory client and fake checkout (overlay on grid, fragment, product, cart and merge; one call per page; thresholds; fallback when off, down, hung or id missing; limits; note texts; key present, 22+ characters, fresh per render, passed through, double submit shows the same order; `409`, out-of-stock, spent-attempt and declined pages with their links; `no-store`). Not run: against the real inventory-service and checkout-service, the container image of this version, screenshots, the e2e suite (`tests/e2e`, needs a running shop).
 
 ## Mailbox
@@ -271,6 +288,13 @@ The photos in `static/img/products/` (webp, 1000 px and 600 px thumbnails) come 
 - Measured with a counting fake client through the real home handler (`TestCurrencyCache_CallsPerListingPage`, sample catalog, 24 cards per page): one listing page asked for 1 supported-currencies lookup and 24 conversions (25 RPCs before the cache, every request). Now the first (cold) request makes 1 + 23 RPCs (two cards cost the same) and the following requests 0, until the 60 s TTL ends. A cold page still costs about 24 RPCs: removing that needs a batch or rate RPC in currency-service (not done, additive proto change, server first).
 - Limits: per replica (each replica warms its own cache), a rate change in currency-service shows up after at most 60 s, a cold page after a restart or a TTL still fans out.
 
+**Product cache** (`cmd/server/product_cache.go`, in-process, per replica, no env switches): the catalog has no batch RPC and none was added, so the one-`GetProduct`-per-id lookups that repeat on every page are cached instead: the cart lines (the header cart count is on every page, the cart page lists them), the recommended products, and the products of a cart at sign-in are fetched in parallel (`fetchProducts`), the first two through the cache.
+- 30 seconds per product (`productCacheTTL`), at most 1024 products (stale first, a map full of live ones is cleared), concurrent lookups of one id share one RPC (same code as the currency cache, `ttlCache`), injected clock. A `NotFound` is kept for the same 30 s (a cart line whose product left the catalog would otherwise cost one RPC per request for the 48 h of the cookie); any other error is never cached. Callers get a copy.
+- Not cached on purpose: the product page's own product, add to cart, the review form and the cart merge at sign-in read the catalog directly.
+- Metric `frontend_product_cache_total{op="product",result="hit|miss|shared"}`.
+- Limits: per replica; a price, name or stock change in the catalog shows in the header count and on the cart page after at most 30 s (the product page shows it at once; checkout charges the catalog's current price either way; with inventory-service on, the stock on the cart page is live, without it the catalog's stock is up to 30 s old).
+- Measured: see "RPC and latency budget per page".
+
 ## Money display
 
 `renderMoney` (`cmd/server/handlers.go`) rounds to the NEAREST minor unit (half up on the magnitude, nanos carried into the units, no overflow up to the int64 range) and shows no decimals for JPY (`currencyDecimals`; the other whitelisted currencies show two). Before it truncated the nanos, which showed 21 of the first 40 seed products one cent low (29.99 as $29.98) because currency-service floors its answers. Every amount on a page goes through it (listing, product, cart lines, shipping, total, order pages), and the callers sum exact units/nanos first (`money.Sum`, `money.MultiplySlow`) and render once, so a displayed total is the rounding of the exact total. Limits: in a non-USD shop the unit price shown can have sub-cent nanos, so "qty x displayed unit" can differ by a cent from the displayed line (the exact line is what checkout charges); the confirmation e-mail is rendered by email-service with its own rules (two decimals for every currency, a code after the amount, thousands separators).
@@ -281,14 +305,15 @@ Multi-stage [`Dockerfile`](Dockerfile):
 
 | Stage | Base | What happens |
 |---|---|---|
-| builder | `golang:1.26-alpine` | `go mod download`, `go build -ldflags="-s -w" -o /bin/frontend ./cmd/server` (`CGO_ENABLED=0`; target arch = builder's arch) |
-| runtime | `alpine:3.24` | binary + `templates/` + `static/` under `/app`; adds `ca-certificates` |
+| builder | `golang:1.26-alpine@sha256:ecb67f98...` | `go mod download`, `go build -ldflags="-s -w -X ...obs.Version/Commit/BuildTime" -o /bin/frontend ./cmd/server` (`CGO_ENABLED=0`; target arch = builder's arch) |
+| runtime | `alpine:3.24@sha256:f59abe65...` | binary + `templates/` + `static/` under `/app`; adds `ca-certificates` |
 
 - **Entrypoint:** `./frontend` (working dir `/app` — templates and static files are loaded by relative path, so don't change the working dir).
 - **User:** numeric `USER 10001:10001` (`appuser`/`appgroup`, created with these fixed ids; `id` in the container prints `uid=10001(appuser) gid=10001(appgroup)`). Build args `SERVICE_VERSION` (default `dev`) and `SERVICE_COMMIT` (default `unknown`) set the OCI labels `version`/`revision` (plus `source`, `licenses=Apache-2.0`) and the ENV of the same names.
+- **Base images** are pinned by tag and digest (the multi-arch index digests of 2026-11-22, `Dockerfile`); Dependabot's docker ecosystem refreshes them.
 - **EXPOSE:** `8080`.
 - **Docker `HEALTHCHECK`:** exec form `["/app/frontend", "healthcheck"]` (no shell, no `wget`): the subcommand does `GET http://127.0.0.1:${PORT:-8080}${BASE_URL}/healthz` with a 3 s limit and exits 0 only for `200`. Run locally: `frontend healthcheck`.
-- **Image size:** 76.7 MB for `platform-demo/frontend:local` (`docker images`, the local compose build of this branch before the audit fixes; `static/` alone is 17 MB because of the product photos). The older ~15 MB figure predates them. Not rebuilt after the fixes.
+- **Image size:** 76.3 MB for `platform-demo/frontend:local` (`docker images`, built 2026-11-22 from the final tree; `static/` alone is 17 MB because of the product photos).
 - The repo root may contain a compiled `server` binary (git-ignored) — it is not used by the image.
 
 ## Kubernetes deployment notes
@@ -370,7 +395,7 @@ and was verified under the `restricted` Pod Security Standard on the earlier loc
 
 **Log shape** (one shape for all services): `timestamp` (RFC 3339, UTC, milliseconds), `severity` (`debug`, `info`, `warning`, `error`), `message`, `service`, `version`, `trace_id` and `span_id` (hex, only while a valid span is active, never empty or all zeros), `request_id` (when the caller sent one), `error` (string, on errors), plus the call's own fields (for example `order_id`). Level from `LOG_LEVEL`. `trace_id`/`span_id` come from the context of the log call: handlers and clients log with `log.WithContext(ctx)`, the formatter reads the span from it. Calls without a request context (startup, shutdown) have no ids. No card data, tokens or e-mail addresses are logged.
 
-**Startup and version**: the first line is `message: "starting"` with `version`, `commit` and `environment`; `version`/`commit` come from `SERVICE_VERSION`, ldflags `-X <module>/internal/obs.Version=` / `.Commit=`, or the VCS data Go embeds (no Dockerfile change was made: without any of them a container image reports `version: "dev"`, `commit: "unknown"`). Panics are logged as one JSON line (`message: "panic"`, `error`) before the process dies; a startup error is one JSON error line, exit 1.
+**Startup and version**: the first line is `message: "starting"` with `version`, `commit` and `environment`; `version`/`commit` come from `SERVICE_VERSION`, ldflags `-X <module>/internal/obs.Version=` / `.Commit=` / `.BuildTime=` (the Dockerfile sets them from the build args `SERVICE_VERSION`, `SERVICE_COMMIT`, `BUILD_TIME`; without them an image reports `version: "dev"`, `commit: "unknown"`), or the VCS data Go embeds. Panics are logged as one JSON line (`message: "panic"`, `error`) before the process dies; a startup error is one JSON error line, exit 1.
 
 **Shutdown**: SIGTERM/SIGINT stops accepting, drains in-flight requests for at most 5 s, then flushes telemetry (cut off after 4 s): the process exits inside 10 s even with an unreachable collector (before this change SIGTERM killed the process without a flush). **pprof** is off. `PPROF_ADDR=127.0.0.1:6060` starts a separate listener; it is never on the metrics port.
 
@@ -434,6 +459,24 @@ It builds `frontend:faro-test`, starts `faro-test-fe` (compose network, the comp
 
 **Checked:** the Go tests, `node --check static/js/faro-init.js` and `tests/faro/run.sh` against a real Chromium (headless, Playwright): all assertions in the three passes pass (the list is at the top of `tests/faro/faro-check.mjs`). **Not run:** a real Alloy `faro.receiver` or Grafana (the collector in the check is a fake that records the payloads), any browser other than Chromium, a signed-in visitor (the attribute is checked as `"false"` in the browser; `"true"` only in a Go test), a sample rate below 1 in a browser, the image on Kubernetes.
 
+## Content-Security-Policy
+
+A Content-Security-Policy for the pages, **report-only by default**: the browser reports what the policy would have blocked and blocks nothing. `CSP_MODE=report-only` (default, also for an empty value), `enforce` (blocking `Content-Security-Policy` header) or `off` (no header); any other value stops the process at start. Assets, probes and `/csp-report` itself get no policy header (they are not documents); every page, including error pages and 404s, does.
+
+```
+default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline';
+img-src 'self' data:; font-src 'self'; connect-src 'self' <origin of FARO_COLLECTOR_URL>;
+object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; report-uri /csp-report
+```
+
+- **Scripts and style elements are strict.** The pages had two inline scripts and one inline `onchange`; they are now files (`static/js/theme-init.js`, blocking in the head so the theme is applied before the first paint, and `static/js/shell.js`, deferred: theme toggle and the currency select). htmx would add an inline `<style>` element for its indicator: turned off with `"includeIndicatorStyles":false` in the `htmx-config` meta tag (the page's CSS styles `.htmx-request` itself). The Faro settings are a JSON data block (`<script type="application/json">`), which the policy does not treat as script. A Go test (`TestCSP_TemplatesAndScriptsAreStrictPolicyClean`) fails when a template gets an inline script, an inline event handler, a `<style>` element or a `javascript:` URL.
+- **One exception: style attributes** (`style-src-attr 'unsafe-inline'`): the rating bars and stars set a `width` in a `style` attribute. Style attributes cannot run code; the exception is limited to attributes, not to `<style>` elements.
+- **Faro keeps working.** The collector (`FARO_COLLECTOR_URL`, where the browser posts its payloads, e.g. `http://localhost:12347` in the local stack) is the one extra origin in `connect-src` (scheme and host only, not the path). Everything else Faro does is same-origin (the `traceparent` header of htmx requests, the scripts under `/static/js/vendor/faro/`). In a real Chromium the Faro SDK and tracing bundle caused no violation and its payloads reached the collector with the policy in both modes (below).
+- **The mailbox iframe** (`/emails/{id}`) is a sandboxed `srcdoc` that inherits the policy; the mails of email-service use inline `style=` attributes only (no `<style>`, no `http`, see its rendering test), so they are covered by the attribute exception. Not run in a browser (see "Not run").
+- **Reports** go to `POST /csp-report` of this service (`report-uri`; the receiver also reads the Reporting API format, so a later `report-to` needs no server change, but only `report-uri` was verified: in the headless Chromium used here the batched `report-to` reports were not delivered within the test window). Each report is counted in `frontend_csp_reports_total{directive}` (the label is a known directive name or `other`, never client text) and, for at most 10 reports per 10 s, logged as one `warning` line `content security policy violation reported by a browser` with `csp.directive`, `csp.blocked`, `csp.document`, `csp.source`, `csp.line`, `csp.disposition` (URLs reduced to scheme, host and path: no query string, 200 characters at most). A report body larger than 16 KiB is refused. In Grafana: Loki `{service_name="frontend"} |= "content security policy violation"` and the counter above.
+- **Going to `enforce`:** run report-only in the target environment for a while, watch the counter and the log line (browser extensions produce `blocked=inline`/`eval` noise from their own injected code; look at `csp.source` and `csp.document`), fix what the application causes, then set `CSP_MODE=enforce` (a Helm value of the deployment, not part of this repository). Rolling back is `CSP_MODE=report-only` or `off`.
+- **Checked** (2026-11-22): `go test -race` (policy text, Faro origin, header per mode and path, the real handler stack, both report formats, log budget with an injected clock, rejects, template and script sources) and `tests/faro/csp-check.mjs` against the real handler stack on the host (a throwaway Go test server over the in-process fakes, Faro on with a fake collector) in Chromium with Playwright: `report-only` and `enforce` both end with zero `securitypolicyviolation` events on the home, product and cart pages, theme toggle, theme memory, currency select and htmx paging working, 25 Faro payloads at the collector, and an injected inline script reported (and, in `enforce`, not run). One real browser report reached `/csp-report` and was logged. **Not run:** the container image, the local compose/Grafana stack and the Faro collector of Alloy (the collector in the check is a fake), a browser other than Chromium, a signed-in visitor, the mailbox page, `report-to` delivery, the Helm deployment.
+
 ## Running locally
 
 Requirements: Go 1.26 (`go.mod` says `go 1.26.11`; with an older local Go use `GOTOOLCHAIN=auto`), Docker, and the seven backend services reachable (the quickest way is `platform-demo-observability/docker-compose.yaml`).
@@ -472,22 +515,25 @@ Browsing to `http://localhost:8080` works with the `Secure` cookies because brow
 
 Requirements: Go 1.26 (`GOTOOLCHAIN=auto` fetches the `go.mod` version; the host has Go 1.22), Docker for the image, Python 3.12 for the docs check. The commands below are the ones the shared pipeline (`platform-demo-workflows`) runs, so a failure can be reproduced without pushing.
 
-| Step | Command | Result on 2026-11-21 |
+| Step | Command | Result |
 |---|---|---|
-| Format | `gofmt -l .` | run, no files listed |
-| Vet and unit tests | `go vet ./... && go test -race -count=1 ./...` | run, passed (4 packages with tests) |
-| Lint | `golangci-lint run ./...` (the repo's `.golangci.yaml`; CI pins golangci-lint v2.14.0) | not run (golangci-lint is not installed on the host) |
-| Vulnerabilities and security | `govulncheck ./...`, `gosec -exclude-generated ./...` | not run |
-| Vet with the e2e tag | `go vet -tags e2e ./...` | run, no findings |
-| End-to-end tests | `go test -tags e2e ./tests/e2e/` against a running shop (not run by CI) | not run |
-| Faro check in a real browser | `tests/faro/run.sh` (needs the compose stack, Node and Playwright; places one real order) | not run |
-| Colour contrast | `python3 -I tools/check-contrast.py` | run, all pairs pass |
+| Format | `gofmt -l .` | 2026-11-22: run on the final tree, no files listed |
+| Vet and unit tests | `go vet ./... && go test -race -count=1 ./...` | 2026-11-22: run on the final tree, passed (4 packages with tests, `-race`); the obs test `TestGRPCRequestPathLogsCarryTraceIDs` 50 times with `-race`: passed; coverage with `-cover`: cmd/server 89.4%, internal/obs 88.2%, internal/validator 36.4%, money 68.8% (reported here only: the pipeline does not print it, no gate) |
+| Lint | `golangci-lint run ./...` (the repo's `.golangci.yaml`; CI pins golangci-lint v2.14.0) | 2026-11-22: run with golangci-lint v2.14.0 (docker image) with `--build-tags e2e --max-same-issues 0` (covers all files): 0 issues, after fixing 3 `errcheck` findings in `cmd/server/budget_test.go` and the unchecked `resp.Body.Close` calls in `tests/e2e`; the run without the tag was not repeated after the fix |
+| Vulnerabilities and security | `govulncheck ./...`, `gosec -exclude-generated ./...` | 2026-11-22: govulncheck: no vulnerabilities; gosec: 0 issues (34 files) |
+| Vet with the e2e tag | `go vet -tags e2e ./...` | 2026-11-22: run, no findings |
+| End-to-end tests | `FRONTEND_ADDR=http://localhost:8080 go test -tags e2e ./tests/e2e/` against a running shop (not run by CI; `FRONTEND_ADDR` needs the `http://` scheme) | 2026-11-22: run against the whole local shop with the final image, 16 tests passed |
+| Faro check in a real browser | `tests/faro/run.sh` (needs the compose stack, Node and Playwright; places one real order) | 2026-11-22: run against the whole shop with the final image, all four parts passed (Faro and server telemetry on, telemetry off, Faro off, a bad `FARO_COLLECTOR_URL` stops the start). The paging wait of `faro-check.mjs` was registered after the click and missed a fast answer (failed with telemetry on); it is now registered before the click, and `run.sh` pass 1 sets `OTEL_SDK_DISABLED=false` (the compose environment switches telemetry off) |
+| CSP in a real browser | `tests/faro/csp-check.mjs` against a running frontend with Faro on (`MODE=report-only` or `MODE=enforce`; Node and Playwright with Chromium, no other part of the stack) | 2026-11-22: run against the final container image on the shop network (real backends), both modes: all checks passed, zero violations on the pages checked; the only report was the deliberate control script. The shop home, a product page and the cart (headless Chromium via the stack frontend) carry the `Content-Security-Policy-Report-Only` header and raised no violation event and no console error |
+| Colour contrast | `python3 -I tools/check-contrast.py` | 2026-11-22: run, all pairs pass |
 | Proto | the `protoc` commands for the order, user, inventory and mailbox contracts are in the README sections Orders, Accounts, Live stock and Mailbox (protoc 3.21.12, protoc-gen-go 1.36.11, protoc-gen-go-grpc 1.6.1); `demo.proto` and `reviews.proto` are in `proto/`, stubs in `genproto/` | not run. Changes are additive only, server first |
-| Image | `docker build -t platform-demo/frontend:local .` | not run today |
-| Image scan | `trivy image --severity CRITICAL,HIGH --exit-code 1 platform-demo/frontend:local` | not run today |
-| Secret scan | `pre-commit run --all-files` (`.pre-commit-config.yaml`, gitleaks) or `gitleaks git --redact` | run with the gitleaks binary of the pre-commit cache (`gitleaks git --redact`, full history, 113 commits): no leaks found |
-| Workflow lint | `actionlint` | run (actionlint 1.7.12), no findings |
-| Docs | `mkdocs build --strict` (mkdocs 1.6.1 + mkdocs-techdocs-core 1.7.1, Python 3.12 venv) and the link check `python3 -I tools/check-md-links.py .` from `platform-demo-workflows` (relative links in `README.md` and `docs/`) | run, both passed |
+| gRPC contract (golden) | `go test ./cmd/server -run TestGRPCContract_Golden` (part of the unit tests; update on purpose with `-update-contract`) | 2026-11-22: run, passed |
+| Image | `docker build --platform linux/amd64 -t platform-demo/frontend:local .` | 2026-11-22: built (amd64, base images by digest), 76.3 MB, user 10001:10001, exec-form HEALTHCHECK, healthy in the shop |
+| Image scan | `trivy image --severity CRITICAL,HIGH --exit-code 1 platform-demo/frontend:local` | 2026-11-22: Trivy 0.76.1, exit 0, CRITICAL/HIGH 0 in the alpine 3.24.4 packages and in the Go binary |
+| Secret scan | `pre-commit run --all-files` (`.pre-commit-config.yaml`, gitleaks) or `gitleaks git --redact` | 2026-11-22: gitleaks full history (126 commits): no leaks |
+| Workflow lint | `actionlint` | 2026-11-21: run (actionlint 1.7.12), no findings |
+| Docs | `mkdocs build --strict` (mkdocs 1.6.1 + mkdocs-techdocs-core 1.7.1, Python 3.12 venv) and the link check `python3 -I tools/check-md-links.py .` from `platform-demo-workflows` (relative links in `README.md` and `docs/`) | 2026-11-22: both passed (24 relative links in 18 pages, 0 broken) |
+| Whole shop | `local/smoke.sh` with the final image in the compose stack | 2026-11-22: `SMOKE PASSED`, 87 steps, three runs in a row (done twice, 6 runs) |
 
 ## Project structure
 
@@ -505,17 +551,19 @@ Requirements: Go 1.26 (`GOTOOLCHAIN=auto` fetches the `go.mod` version; the host
 │   ├── reviews.go       # review-service client use: rating summaries, review list, review form validation and POST handler
 │   ├── middleware.go    # request logging + session-id cookie (not for /static, /favicon.ico, probes)
 │   ├── static.go        # /static/* and /favicon.ico: cache headers, ETag/304, gzip for text types, no directory listing, no cookie
-│   ├── currency_cache.go # in-process cache for currency-service (supported list, conversions), singleflight
+│   ├── currency_cache.go # in-process cache for currency-service (supported list, conversions), singleflight; the generic ttlCache
+│   ├── product_cache.go # 30 s cache of GetProduct for cart lines and recommendations, NotFound kept, copies
+│   ├── csp.go           # Content-Security-Policy header (CSP_MODE), POST /csp-report receiver
 │   ├── otlp.go          # OTLP/gRPC setup: trace, metric (Prometheus bridge) and log (logrus hook) providers
 │   ├── telemetry.go     # Prometheus HTTP metrics, /metrics server, route wrapping, Pyroscope
-│   └── *_test.go        # unit tests for handlers, middleware, rpc helpers and telemetry
+│   └── *_test.go        # unit tests for handlers, middleware, rpc helpers and telemetry; budget_test.go (RPCs per page), contract_test.go + testdata/grpc-contract.golden (gRPC contract), csp_test.go
 ├── tools/
 │   └── check-contrast.py # WCAG contrast check of the colour tokens (stdlib Python)
 ├── internal/validator/  # form payload validation (go-playground/validator) + tests
 ├── money/               # Money arithmetic helpers + tests
 ├── genproto/            # generated gRPC stubs for all backend services (demo.pb.go, demo_grpc.pb.go; orders/, users/, inventory/ and mailbox/ are packages of their own)
 ├── templates/
-│   ├── header.html, footer.html  # page shell: theme script, header (brand, nav, currency, theme toggle, cart), footer
+│   ├── header.html, footer.html  # page shell: header (brand, nav, currency, theme toggle, cart), footer
 │   ├── home.html, product.html, cart.html, order.html, error.html, account.html (sign in, register, account), mailbox.html (mail list, one mail)  # pages
 │   ├── ad.html, recommendations.html  # shared blocks
 │   ├── reviews.html     # stars, rating badge, reviews block, review items (htmx fragment), review form
@@ -523,12 +571,12 @@ Requirements: Go 1.26 (`GOTOOLCHAIN=auto` fetches the `go.mod` version; the host
 │   └── catalog.html     # department nav and tiles, search/sort toolbar, results fragment, pagination, product card
 ├── static/
 │   ├── styles/          # styles.css (design tokens, light/dark, layout, components), cart.css, order.css, browse.css, reviews.css, orders.css, accounts.css, mailbox.css
-│   ├── js/              # htmx.min.js (vendored), gallery.js, faro-init.js, vendor/faro/ (vendored Faro bundles)
+│   ├── js/              # htmx.min.js (vendored), theme-init.js, shell.js, gallery.js, checkout.js, faro-init.js, vendor/faro/ (vendored Faro bundles)
 │   ├── favicon.svg
 │   └── img/products/    # product photos (webp), see "Product images"
 ├── tests/e2e/           # HTTP end-to-end tests (not run by CI; the kind-based job was removed)
-├── tests/faro/          # real-browser check of the Faro RUM wiring (run.sh, not run by CI) and its throwaway OTLP sink
-├── .github/workflows/   # ci.yaml (pull requests), release.yaml (v* tags / manual) - callers of platform-demo-workflows
+├── tests/faro/          # real-browser check of the Faro RUM wiring (run.sh, not run by CI) and its throwaway OTLP sink; csp-check.mjs (Content-Security-Policy in a real browser)
+├── .github/workflows/   # ci.yaml (pull requests, merge button), publish.yaml (image, dev/stage/prod promotion) - callers of platform-demo-workflows
 ├── Dockerfile
 └── go.mod / go.sum / .golangci.yaml
 ```
@@ -545,6 +593,10 @@ Run (branch `feat/perf-and-otel`): `GOTOOLCHAIN=auto go vet ./...`, `GOTOOLCHAIN
 
 Run on branch `fix/price-display`: `GOTOOLCHAIN=auto go vet ./...`, `GOTOOLCHAIN=auto go test -race -count=1 ./...` (all packages pass) and `golangci-lint run ./...`. Tests: table cases for rounding, the carry (0.999999999 to $1.00), half-cent edges, JPY, EUR/GBP/CAD/TRY; all 117 seed prices (copy in `cmd/server/testdata/seed-prices.json`, compared with the catalog repo's `products.json` when it sits next to this repo) render as their seed price in a USD shop with no conversion RPC and also after the service's one-nano-low answer; the cart page sums then renders in USD, EUR and JPY. **Not run:** a real currency-service, a browser, the image, the live shop.
 
+## Checked for the remaining audit fixes (product cache, RPC budget, CSP, contract test)
+
+Run on 2026-11-22 on branch `fix/frontend-rest`: `gofmt -l .` (empty), `GOTOOLCHAIN=auto go vet ./...` and `go vet -tags e2e ./...` (clean), `GOTOOLCHAIN=auto go test -race -count=1 ./...` (all packages pass), `python3 -I tools/check-contrast.py` (all pairs pass), `mkdocs build --strict` and the markdown link check (pass). Tests added: `budget_test.go` (RPCs per page, product cache: TTL with an injected clock, copies, `NotFound`, errors not cached, bound, singleflight), `csp_test.go` (policy, header per mode and path, both report formats, log budget, rejects, template sources), `contract_test.go` (golden gRPC contract, also run once with a changed golden line to see it fail). In a real Chromium (`tests/faro/csp-check.mjs`, both modes, over the real handler stack with in-process fakes) the pages, the theme toggle, the currency select, htmx paging and Faro run with zero policy violations; a real report reached `/csp-report`. **Not run in that round:** the container image, the compose stack and the Grafana stack (Faro against a real Alloy collector), a browser other than Chromium, a latency measurement against the real backends, the mailbox page in a browser, the Helm deployment.
+
 ## Known limitations
 
 - `Secure` + `SameSite=Strict` cookies break carts over plain HTTP outside `localhost`.
@@ -552,6 +604,8 @@ Run on branch `fix/price-display`: `GOTOOLCHAIN=auto go vet ./...`, `GOTOOLCHAIN
 - Reviews: no spam protection, rate limiting or moderation (anyone who can load a product page can post); the review author is a free-text name, not an account.
 - Per-request gRPC calls have no retries; each has a deadline (3 s, 15 s for checkout, 100 ms for ads, see "Deadlines").
 - Live stock is only as fresh as the page: another visitor can take the last item between the page and the order. The order itself is safe (checkout reserves all or nothing and answers `422 out of stock`); the cart has no quantity editor, so a line that became too big is fixed by emptying the cart and adding again.
+- Product cache: the header cart count and the cart page can show a catalog change up to 30 s late (see "Performance"). A cold listing page still makes about 23 currency conversions (one RPC each, in parallel): removing that needs a batch or rate RPC in currency-service (additive proto change, server first, not done).
+- Content-Security-Policy is report-only by default; it is not enforced anywhere until someone sets `CSP_MODE=enforce` after reading the reports of a real deployment. Style attributes are allowed (`style-src-attr 'unsafe-inline'`).
 - `/setCurrency` redirects to the `Referer` header as is. (`/static/` directory listing and missing cache headers, found by the audit, are fixed, see the `/static/*` row.)
 
 ## Wide screens

@@ -17,6 +17,10 @@ nav:
       - "1. Server-rendered HTML with htmx": adr/0001-server-rendered-html-with-htmx.md
       - "2. Cache currency answers in process": adr/0002-cache-currency-answers-in-process.md
       - "3. Readiness checks only the core": adr/0003-readiness-checks-only-the-pages-core.md
+      - "4. Cache product lookups, no batch RPC": adr/0004-cache-product-lookups-instead-of-a-batch-rpc.md
+      - "5. Content-Security-Policy, report-only first": adr/0005-content-security-policy-report-only-first.md
+      - "6. Proto package stays hipstershop": adr/0006-proto-package-stays-hipstershop.md
+      - "7. Go module name and cmd/server": adr/0007-go-module-name-and-cmd-server.md
 theme:
   name: material
   features:

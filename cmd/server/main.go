@@ -59,7 +59,8 @@ type frontendServer struct {
 	currencySvcAddr string
 	currencySvcConn *grpc.ClientConn
 	currencyClient  pb.CurrencyServiceClient // nil = the client of currencySvcConn; a test double otherwise
-	currency        currencyCache
+	currency        ttlCache
+	products        ttlCache // GetProduct for cart lines and recommendations, see product_cache.go
 
 	cartSvcAddr string
 	cartSvcConn *grpc.ClientConn
@@ -135,8 +136,15 @@ func main() {
 		log.Info("FARO_COLLECTOR_URL is empty: browser RUM (Faro) is off")
 	}
 
+	cspSetting, err = cspModeFromEnv(os.Getenv)
+	if err != nil {
+		o.Fatal("invalid configuration", err)
+	}
+	log.Infof("Content-Security-Policy mode: %s", cspSetting)
+
 	// --- Service wiring ---
 	svc := new(frontendServer)
+	svc.products.configureForProducts()
 	baseUrl = os.Getenv("BASE_URL")
 
 	mustMapEnv(&svc.productCatalogSvcAddr, "PRODUCT_CATALOG_SERVICE_ADDR")
@@ -260,6 +268,7 @@ func newHandler(svc *frontendServer, log *logrus.Logger) http.Handler {
 	static := newStaticServer(http.Dir("./static/"))
 	r.PathPrefix(baseUrl + "/static/").Handler(http.StripPrefix(baseUrl+"/static/", static))
 	r.Handle(baseUrl+"/favicon.ico", static.file("/favicon.svg")) // the logo; browsers ask for it when a page has no <link rel=icon>
+	r.Handle(baseUrl+cspReportPath, &cspReporter{})               // browsers post CSP violation reports here (other methods: 405)
 	r.HandleFunc(baseUrl+"/robots.txt", func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprint(w, "User-agent: *\nDisallow: /") })
 	r.HandleFunc(baseUrl+"/_healthz", livenessHandler) // the original probe path (compose, e2e tests): same answer as /healthz
 	r.HandleFunc(baseUrl+"/healthz", livenessHandler)
@@ -272,6 +281,7 @@ func newHandler(svc *frontendServer, log *logrus.Logger) http.Handler {
 
 	var handler http.Handler = r
 	handler = svc.withUser(handler)                                                              // who is asking: shop_auth cookie -> user-service GetSession
+	handler = withCSP(handler)                                                                   // Content-Security-Policy (report-only by default) on pages
 	handler = &logHandler{log: log, next: handler}                                               // structured logging
 	handler = ensureSessionID(handler)                                                           // session ID cookie
 	handler = otelhttp.NewHandler(handler, "frontend", otelhttp.WithSpanNameFormatter(spanName)) // OTel tracing (see spanName)

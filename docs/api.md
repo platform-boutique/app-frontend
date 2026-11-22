@@ -23,12 +23,13 @@ All routes are prefixed with `BASE_URL` (empty by default).
 | `/logout` | POST | Sign out: `Logout` at user-service (best effort), expire `shop_auth`, `303` to `/`. `Sec-Fetch-Site: cross-site`: `403` |
 | `/logout` | GET | Expire all cookies (including `shop_auth`, after a best-effort `Logout` call) and redirect to `/` |
 | `/product-meta/{ids}` | GET | JSON of a single product. Kept for compatibility: no page or script uses it any more. Any error answers an empty `200` |
-| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js` and `js/gallery.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`). GET/HEAD only. Never sets a cookie. Every response has `Cache-Control` (`public, max-age=86400` for `img/` and `js/vendor/`, `public, max-age=300, must-revalidate` for the rest: nothing is fingerprinted, so nothing is `immutable`), `ETag` and `Last-Modified` (`304` on `If-None-Match` / `If-Modified-Since`) and `X-Content-Type-Options: nosniff`. Text types of 256 bytes or more (css, js, svg, json, html, txt, xml) are sent gzip-compressed to clients that accept it (`Vary: Accept-Encoding`, the compressed body is kept in memory, at most 64 files, and recomputed when size or mtime change; the ETag of the gzip variant ends in `-gzip`); images (webp) are never compressed. Brotli is not offered (would need a new dependency). Directories are `404` (no listing, no index) |
+| `/static/*` | GET | `styles/*.css`, `js/htmx.min.js`, `js/theme-init.js` (blocking, in the head), `js/shell.js` (theme toggle and currency select), `js/gallery.js`, `js/checkout.js`, `js/faro-init.js` and `js/vendor/faro/*` (only referenced by pages while `FARO_COLLECTOR_URL` is set), `favicon.svg`, product images (`img/products/`). GET/HEAD only. Never sets a cookie. Every response has `Cache-Control` (`public, max-age=86400` for `img/` and `js/vendor/`, `public, max-age=300, must-revalidate` for the rest: nothing is fingerprinted, so nothing is `immutable`), `ETag` and `Last-Modified` (`304` on `If-None-Match` / `If-Modified-Since`) and `X-Content-Type-Options: nosniff`. Text types of 256 bytes or more (css, js, svg, json, html, txt, xml) are sent gzip-compressed to clients that accept it (`Vary: Accept-Encoding`, the compressed body is kept in memory, at most 64 files, and recomputed when size or mtime change; the ETag of the gzip variant ends in `-gzip`); images (webp) are never compressed. Brotli is not offered (would need a new dependency). Directories are `404` (no listing, no index) |
 | `/favicon.ico` | GET | The logo (`static/favicon.svg`, `image/svg+xml`) with the `/static/` headers and no cookie |
 | `/healthz` | GET | Liveness: `200 ok`, no dependency checked |
 | `/readyz` | GET | Readiness: `200 ok` when the connections to product-catalog, currency and cart are READY, else `503` with `not ready: <backend names>`. Waits at most 1.5 s |
 | `/version` | GET | JSON `{"service","version","commit","build_time"}` |
 | `/_healthz` | GET | Liveness (`ok`), kept for compose, the e2e tests and `tests/faro/run.sh`; same handler as `/healthz` |
+| `/csp-report` | POST | Receiver of the browsers' Content-Security-Policy violation reports (`application/csp-report` or `application/reports+json`, at most 16 KiB, answers `204`; `400` for something that is not a report, `405` for other methods). Counted in `frontend_csp_reports_total{directive}`; a log line for at most 10 reports per 10 s. No session cookie, no user lookup, no policy header. See "Content-Security-Policy" |
 | `/robots.txt` | GET | `Disallow: /` |
 
 **Supported currencies** (whitelist in code, intersected with what `currency-service` offers): `USD`, `EUR`, `CAD`, `JPY`, `GBP`, `TRY`. Default is `USD`.
@@ -37,12 +38,26 @@ All routes are prefixed with `BASE_URL` (empty by default).
 
 | Page | Calls |
 |---|---|
-| Home | currency (list + convert per product), product-catalog (`ListCategories` + `ListProductsFiltered`, 24 per page), inventory (ONE `GetStock` with the ids of the page, 1 s deadline, failures ignored), cart (get, then product-catalog `GetProduct` per cart line for the header count), ad (100 ms deadline, failures ignored) |
-| Product | product-catalog (get), inventory (ONE `GetStock` for the product, 1 s deadline, failures ignored), currency, cart, recommendation → product-catalog (up to 4), ad |
-| Cart | cart (get), shipping (quote with nil address), currency, product-catalog, inventory (ONE `GetStock` with the ids of the lines, 1 s deadline, failures ignored), recommendation |
+| Home | currency (list + convert per product), product-catalog (`ListCategories` + `ListProductsFiltered`, 24 per page), inventory (ONE `GetStock` with the ids of the page, 1 s deadline, failures ignored), cart (get, then product-catalog `GetProduct` per cart line for the header count, through the 30 s product cache), ad (100 ms deadline, failures ignored) |
+| Product | product-catalog (get), inventory (ONE `GetStock` for the product, 1 s deadline, failures ignored), currency, cart, recommendation → product-catalog (up to 4, through the product cache), ad |
+| Cart | cart (get), shipping (quote with nil address), currency, product-catalog (`GetProduct` per line and per recommended id, parallel, through the product cache), inventory (ONE `GetStock` with the ids of the lines, 1 s deadline, failures ignored), recommendation |
 | Checkout | checkout (PlaceOrder), then recommendation + currency for the confirmation page |
 | Emails / email detail | order (`ListOrders` / `GetOrder`, 1.5 s deadline), then mailbox (`ListOrderEmails` / `GetOrderEmail`, 1.5 s deadline) and the cached catalog category list for the header navigation |
 | Order tracking, extra | mailbox (ONE `ListOrderEmails` for the order, 1 s deadline, failures ignored) for the "View confirmation email" button |
+
+### RPC and latency budget per page
+
+**RPCs, measured.** `TestRPCBudgetPerPage` (`cmd/server/budget_test.go`) serves each page through the real handlers against in-process fakes of every backend and counts every backend RPC (gRPC server interceptor; the review, inventory and currency fakes count at the client). Setup: cart of 3 lines, recommendation-service answers 5 ids (4 are used), display currency EUR, a full listing page of 24 cards (23 distinct prices), reviews and inventory on. "Cold" = every cache empty (first request after a start or after the TTLs), "warm" = the next request. The test fails when a page makes a different number of calls, so a new call has to change this table on purpose.
+
+| Page | Cold | Warm | What is left when warm |
+|---|---|---|---|
+| Home (`/`) | 33 | 6 | cart, categories, listing, ads, stock, rating summaries (1 call each) |
+| Product (`/product/{id}`) | 17 | 8 | product, cart, categories, recommendations, ads, stock, rating summary, review list (1 call each) |
+| Cart (`/cart`) | 16 | 4 | cart, shipping quote, stock, recommendations (1 call each) |
+
+The cold column is made of the supported-currency list (1) and the price conversions (home 23, product 1, cart 3), plus the product lookups: home 3 (cart lines), product 8 (the product itself, 3 cart lines, 4 recommended), cart 7 (3 lines, 4 recommended). The warm column has none of them except the product page's own `GetProduct`. Before the product cache every request made those product lookups: home 3, product 8, cart 7 calls, warm or not (cart page warm: 11 instead of 4). The catalog has no batch RPC and none was added (no proto change); the lookups run in parallel.
+
+**Latency, computed not measured.** Every call has a deadline (see "Deadlines") and the stages of a page run one after another with the calls inside a stage in parallel, so the worst case (every call of a stage ending at its deadline) is the sum of the slowest call of each stage: home about 12 s (categories/currencies/cart 3 s, listing 3 s, prices 3 s, header cart count 3 s, ad 0.1 s), product about 12 s (first stage 3 s, second stage 6 s because the recommendations call the catalog after the recommender, header count 3 s, ad 0.1 s), cart about 13 s (first stage 3 s, cart lines 3 s, shipping quote and its conversion or recommendations 6 s, navigation 1 s). All of them are inside the server's 30 s `WriteTimeout`. These are upper bounds from the constants, not what a visitor sees: the real latency per route is `http_request_duration_seconds{route}` (the `frontend-overview` dashboard). **Not measured:** a latency distribution against the real backends (the compose stack was not run for this).
 
 ### Errors
 

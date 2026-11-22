@@ -109,8 +109,11 @@ try {
   await page.goto(BASE + '/?page=2');
   await settle();
   const htmxReqs = () => sent.filter((r) => r.headers['hx-request'] === 'true');
-  await page.locator('a.page-next').first().click();
-  await page.waitForResponse((r) => r.url().includes('page=3') && r.request().headers()['hx-request'] === 'true');
+  // the wait is registered BEFORE the click: a fast answer would otherwise be missed (seen with server telemetry on)
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('page=3') && r.request().headers()['hx-request'] === 'true'),
+    page.locator('a.page-next').first().click(),
+  ]);
   await sleep(1600);
   // first search: paging view -> search view changes the layout, so the server answers HX-Redirect (full load)
   await page.locator('#q').fill('mug');
@@ -119,8 +122,10 @@ try {
   await settle();
   // second search: stays in the page (XHR + swap)
   await page.locator('#q').fill(NEEDLE);
-  await page.locator('#q').press('Enter');
-  await page.waitForResponse((r) => r.url().includes('q=' + NEEDLE) && r.request().headers()['hx-request'] === 'true');
+  await Promise.all([
+    page.waitForResponse((r) => r.url().includes('q=' + NEEDLE) && r.request().headers()['hx-request'] === 'true'),
+    page.locator('#q').press('Enter'),
+  ]);
   await sleep(1600);
   await page.route((u) => u.search.includes('boom=1'), (route) => route.fulfill({ status: 500, contentType: 'text/plain', body: 'secret failure body' }));
   await page.route((u) => u.search.includes('boom=2'), (route) => route.abort());
