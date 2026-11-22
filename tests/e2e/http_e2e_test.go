@@ -47,7 +47,7 @@ func TestHealthz_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /_healthz: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
@@ -77,7 +77,7 @@ func TestReadyz_ReadyWithBackends(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /readyz: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("GET /readyz = %d, want 200", resp.StatusCode)
 	}
@@ -88,7 +88,7 @@ func TestRobotsTxt_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /robots.txt: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
@@ -100,7 +100,7 @@ func TestRobotsTxt_DisallowsAll(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /robots.txt: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	buf := make([]byte, 256)
 	n, _ := resp.Body.Read(buf)
@@ -121,7 +121,7 @@ func TestStaticCSS_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /static/styles/styles.css: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
@@ -138,7 +138,7 @@ func TestStaticCartCSS_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /static/styles/cart.css: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
@@ -150,7 +150,7 @@ func TestStaticMissing_Returns404(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /static/does-not-exist.css: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("got status %d, want 404", resp.StatusCode)
@@ -166,7 +166,7 @@ func TestSetCurrency_ValidCode_Redirects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /setCurrency: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Valid currency should trigger a cookie set + redirect (302/303)
 	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusSeeOther {
@@ -181,7 +181,7 @@ func TestSetCurrency_InvalidCode_ReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /setCurrency: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK {
 		t.Error("expected non-200 for invalid currency code, got 200")
@@ -195,7 +195,7 @@ func TestSetCurrency_EmptyCode_ReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /setCurrency: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK {
 		t.Error("expected non-200 for empty currency code, got 200")
@@ -211,7 +211,7 @@ func TestHome_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
@@ -234,7 +234,7 @@ func TestProduct_UnknownID_ReturnsNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /product/no-such-product: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("got status %d, want 404", resp.StatusCode)
@@ -248,7 +248,7 @@ func TestProduct_ExistingID_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /product/%s: %v", seededProductID, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
@@ -262,7 +262,7 @@ func TestCart_ReturnsOK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /cart: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("got status %d, want 200", resp.StatusCode)
@@ -279,7 +279,7 @@ func TestAddToCart_InvalidQuantity_ReturnsBadRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /cart: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusOK {
 		t.Error("expected non-200 for invalid quantity, got 200")

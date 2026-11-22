@@ -61,7 +61,7 @@ COLLECTOR_URL="http://localhost:${COLLECTOR_PORT}/collect"   # the BROWSER (on t
 
 echo; echo "== pass 1: Faro on, server telemetry on"
 docker run -d --name "$SINK" --network "$NETWORK" --memory 64m -v "$WORK:/s:ro" alpine:3.24 /s/otlpsink >/dev/null
-start_fe -e "FARO_COLLECTOR_URL=$COLLECTOR_URL" -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$SINK:4317" -e ENABLE_TRACING=1 && { run_check full || rc=1; } || rc=1
+start_fe -e "FARO_COLLECTOR_URL=$COLLECTOR_URL" -e "OTEL_EXPORTER_OTLP_ENDPOINT=http://$SINK:4317" -e OTEL_SDK_DISABLED=false && { run_check full || rc=1; } || rc=1
 
 echo; echo "== pass 2: Faro on, server telemetry off (compose environment unchanged)"
 start_fe -e "FARO_COLLECTOR_URL=$COLLECTOR_URL" && { PLACE_ORDER=0 run_check no-telemetry || rc=1; } || rc=1
