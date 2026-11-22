@@ -66,4 +66,4 @@ None on the server. The visitor's session id is a cookie; carts live in cart-ser
 
 ## Decisions
 
-[ADR 1](adr/0001-server-rendered-html-with-htmx.md), [ADR 2](adr/0002-cache-currency-answers-in-process.md), [ADR 3](adr/0003-readiness-checks-only-the-pages-core.md), [ADR 4](adr/0004-cache-product-lookups-instead-of-a-batch-rpc.md), [ADR 5](adr/0005-content-security-policy-report-only-first.md).
+[ADR 1](adr/0001-server-rendered-html-with-htmx.md), [ADR 2](adr/0002-cache-currency-answers-in-process.md), [ADR 3](adr/0003-readiness-checks-only-the-pages-core.md), [ADR 4](adr/0004-cache-product-lookups-instead-of-a-batch-rpc.md), [ADR 5](adr/0005-content-security-policy-report-only-first.md), [ADR 6](adr/0006-proto-package-stays-hipstershop.md), [ADR 7](adr/0007-go-module-name-and-cmd-server.md).
