@@ -26,6 +26,7 @@
 | `PPROF_ADDR` | No | unset (no pprof) | `host:port` of a separate pprof listener, e.g. `127.0.0.1:6060`. Off unless set; never expose it. pprof is never served on the metrics port |
 | `LOG_LEVEL` | No | `info` | `debug`, `info`, `warn` or `error`; anything else falls back to `info` with a warning |
 | `SERVICE_VERSION` | No | build info, else `dev` | `service.version`, the `version` log field and the `build_info` label. Fallbacks in order: ldflags `-X <module>/internal/obs.Version=...` (and `.Commit=`, `.BuildTime=`), the VCS revision Go embeds in the binary (12 characters, `-dirty` if modified), `dev` |
+| `HOSTNAME` | No | the OS hostname | `service.instance.id` of every signal (the pod name in Kubernetes, where the kubelet sets it); read by `internal/obs`, not something to set by hand |
 | `DEPLOYMENT_ENVIRONMENT` | No | `local` | `deployment.environment` on every signal and the Pyroscope tag `environment` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | No | unset (telemetry off) | OTLP/**gRPC** endpoint for **traces, metrics and logs**, e.g. `http://alloy:4317`. Telemetry is on only if this is a valid absolute http(s) URL; empty or malformed means off (one warning, never a crash). The legacy `COLLECTOR_SERVICE_ADDR` and `ENABLE_TRACING` are no longer read |
 | `OTEL_SDK_DISABLED` | No | unset | `true` (trimmed, case-insensitive) forces everything off: OTLP export and profiling, even if an endpoint or `PYROSCOPE_ADDR` is set |
@@ -40,6 +41,7 @@
 | `FARO_APP_NAME` | No | `everly-frontend` | Faro `app.name` (at most 128 characters) |
 | `FARO_APP_VERSION` | No | `SERVICE_VERSION`, else build info, else `dev` | Faro `app.version` (the same version the server reports) |
 | `FARO_ENV` | No | `local` | Faro `app.environment` |
+| `CSP_MODE` | No | `report-only` | Content-Security-Policy: `report-only` (header `Content-Security-Policy-Report-Only`, nothing is blocked), `enforce` (blocking) or `off` (no header). Any other value stops the process at start. See the README section "Content-Security-Policy" |
 | `FARO_SESSION_SAMPLE_RATE` | No | `1` | Share of browser sessions that report, a number from 0 to 1 (checked at start) |
 
 Notes:

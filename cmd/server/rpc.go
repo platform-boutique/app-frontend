@@ -93,31 +93,31 @@ func (fe *frontendServer) getRecommendations(ctx context.Context, userID string,
 		ids = ids[:4] // cap early so we don't fetch more than we'll show
 	}
 
-	type result struct {
-		product *pb.Product
-		err     error
-	}
+	products, errs := fetchProducts(ids, func(id string) (*pb.Product, error) { return fe.getProductCached(ctx, id) })
 
-	results := make([]result, len(ids))
+	for i, err := range errs {
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to get recommended product info (#%s)", ids[i])
+		}
+	}
+	return products, nil
+}
+
+// fetchProducts runs get for every id in parallel (one RPC each: the catalog has no batch RPC) and
+// returns the products and the errors in the order of ids.
+func fetchProducts(ids []string, get func(id string) (*pb.Product, error)) ([]*pb.Product, []error) {
+	products := make([]*pb.Product, len(ids))
+	errs := make([]error, len(ids))
 	var wg sync.WaitGroup
 	for i, id := range ids {
 		wg.Add(1)
 		go func(i int, id string) {
 			defer wg.Done()
-			p, err := fe.getProduct(ctx, id)
-			results[i] = result{p, err}
+			products[i], errs[i] = get(id)
 		}(i, id)
 	}
 	wg.Wait()
-
-	out := make([]*pb.Product, len(ids))
-	for i, r := range results {
-		if r.err != nil {
-			return nil, errors.Wrapf(r.err, "failed to get recommended product info (#%s)", ids[i])
-		}
-		out[i] = r.product
-	}
-	return out, nil
+	return products, errs
 }
 
 func (fe *frontendServer) getAd(ctx context.Context, ctxKeys []string) ([]*pb.Ad, error) {

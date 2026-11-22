@@ -8,17 +8,8 @@
     <meta name="color-scheme" content="light dark">
     <meta name="description" content="{{ $.brand_name }}: {{ $.brand_tagline }}">
     <title>{{ template "page_title" . }}</title>
-    {{/* Runs before the stylesheets so the chosen theme is applied on first paint (no flash). */}}
-    <script>
-        (function () {
-            var d = document.documentElement;
-            d.className += ' js';
-            try {
-                var t = window.localStorage.getItem('theme');
-                if (t === 'light' || t === 'dark') { d.setAttribute('data-theme', t); }
-            } catch (e) { /* storage blocked: follow the OS setting */ }
-        })();
-    </script>
+    {{/* Blocking on purpose and before the stylesheets: the chosen theme is applied on first paint (no flash). A file, not inline code, so a Content-Security-Policy needs no 'unsafe-inline' for scripts. */}}
+    <script src="{{ $.baseUrl }}/static/js/theme-init.js"></script>
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/styles.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/cart.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/order.css">
@@ -28,8 +19,9 @@
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/accounts.css">
     <link rel="stylesheet" href="{{ $.baseUrl }}/static/styles/mailbox.css">
     {{/* htmx 2.0.11, self-hosted (see README): progressive enhancement of the catalogue toolbar and paging. */}}
+    {{/* includeIndicatorStyles false: htmx would add an inline <style> element (blocked by a strict style-src); the page's CSS styles .htmx-request itself. */}}
     {{/* 4xx/5xx answers are swapped too: the server sends the error message for #page-alert (HX-Retarget). */}}
-    <meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true},{"code":"...","swap":true}]}'>
+    <meta name="htmx-config" content='{"includeIndicatorStyles":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"[45]..","swap":true,"error":true},{"code":"...","swap":true}]}'>
     <script defer src="{{ $.baseUrl }}/static/js/htmx.min.js"></script>
     {{/*
       Grafana Faro (browser RUM), only when FARO_COLLECTOR_URL is set. No inline code: the settings are a JSON
@@ -71,8 +63,7 @@
                 <form method="POST" class="currency-form" action="{{ $.baseUrl }}/setCurrency" id="currency_form">
                     <label for="currency_code" class="visually-hidden">Currency</label>
                     <span class="select-wrap">
-                        <select class="select" name="currency_code" id="currency_code"
-                            onchange="document.getElementById('currency_form').submit();">
+                        <select class="select" name="currency_code" id="currency_code">
                             {{ range $.currencies }}
                             <option value="{{.}}" {{ if eq . $.user_currency }}selected="selected"{{ end }}>{{ renderCurrencyLogo . }} {{.}}</option>
                             {{ end }}

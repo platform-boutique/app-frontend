@@ -202,10 +202,11 @@ func (fe *frontendServer) withUser(next http.Handler) http.Handler {
 	})
 }
 
-// isStaticPath: assets and probes never need to know who is asking.
+// isStaticPath: assets, probes and the CSP report endpoint never need to know who is asking (no session cookie,
+// no user lookup, access line at Debug) and are not pages (no policy header).
 func isStaticPath(p string) bool {
 	switch p {
-	case baseUrl + "/_healthz", baseUrl + "/healthz", baseUrl + "/readyz", baseUrl + "/version", baseUrl + "/robots.txt", baseUrl + "/favicon.ico":
+	case baseUrl + "/_healthz", baseUrl + "/healthz", baseUrl + "/readyz", baseUrl + "/version", baseUrl + "/robots.txt", baseUrl + "/favicon.ico", baseUrl + cspReportPath:
 		return true
 	}
 	return strings.HasPrefix(p, baseUrl+"/static/")
@@ -574,17 +575,17 @@ func (fe *frontendServer) mergeCart(ctx context.Context, log logrus.FieldLogger,
 	// live stock of all of them in one call; without inventory-service the catalogue's stock caps the lines
 	products := make(map[string]*pb.Product, len(order))
 	var found []*pb.Product
-	for _, id := range order {
-		p, err := fe.getProduct(ctx, id)
-		if status.Code(err) == codes.NotFound {
+	fetched, errs := fetchProducts(order, func(id string) (*pb.Product, error) { return fe.getProduct(ctx, id) })
+	for i, id := range order {
+		if status.Code(errs[i]) == codes.NotFound {
 			continue // the product left the catalog: nothing to carry over
 		}
-		if err != nil {
-			log.WithField("error", err).Warn("could not check the stock while merging the cart, leaving the anonymous cart as it is")
+		if errs[i] != nil {
+			log.WithField("error", errs[i]).Warn("could not check the stock while merging the cart, leaving the anonymous cart as it is")
 			return
 		}
-		products[id] = p
-		found = append(found, p)
+		products[id] = fetched[i]
+		found = append(found, fetched[i])
 	}
 	stock := fe.overlayStock(ctx, log, found...)
 	added := 0
