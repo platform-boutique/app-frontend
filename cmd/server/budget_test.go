@@ -187,12 +187,12 @@ func TestProductCache_TTLNotFoundAndCopies(t *testing.T) {
 		t.Errorf("second: name %q, %d RPCs (want a hit and an untouched copy)", p2.GetName(), calls())
 	}
 	clk.Advance(productCacheTTL - time.Second)
-	get("pan-05")
+	_, _ = get("pan-05")
 	if calls() != 1 {
 		t.Errorf("just inside the TTL: %d RPCs", calls())
 	}
 	clk.Advance(2 * time.Second)
-	get("pan-05")
+	_, _ = get("pan-05")
 	if calls() != 2 {
 		t.Errorf("after the TTL: %d RPCs, want 2", calls())
 	}
@@ -207,7 +207,7 @@ func TestProductCache_TTLNotFoundAndCopies(t *testing.T) {
 		t.Errorf("3 lookups of a missing product: %d RPCs in total, want 3 (2 + 1)", calls())
 	}
 	clk.Advance(productCacheTTL + time.Second)
-	get("gone")
+	_, _ = get("gone")
 	if calls() != 4 {
 		t.Errorf("missing product after the TTL: %d RPCs, want 4", calls())
 	}
