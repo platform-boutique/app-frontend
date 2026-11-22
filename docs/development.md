@@ -4,22 +4,24 @@
 
 Requirements: Go 1.26 (`GOTOOLCHAIN=auto` fetches the `go.mod` version; the host has Go 1.22), Docker for the image, Python 3.12 for the docs check. The commands below are the ones the shared pipeline (`platform-demo-workflows`) runs, so a failure can be reproduced without pushing.
 
-| Step | Command | Result on 2026-11-21 |
+| Step | Command | Result |
 |---|---|---|
-| Format | `gofmt -l .` | run, no files listed |
-| Vet and unit tests | `go vet ./... && go test -race -count=1 ./...` | run, passed (4 packages with tests) |
+| Format | `gofmt -l .` | 2026-11-22: run, no files listed |
+| Vet and unit tests | `go vet ./... && go test -race -count=1 ./...` | 2026-11-22: run, passed (4 packages with tests, `-race`); coverage with `-cover`: cmd/server 89.4%, internal/obs 88.2%, internal/validator 36.4%, money 68.8% (reported here only: the pipeline does not print it, no gate) |
 | Lint | `golangci-lint run ./...` (the repo's `.golangci.yaml`; CI pins golangci-lint v2.14.0) | not run (golangci-lint is not installed on the host) |
 | Vulnerabilities and security | `govulncheck ./...`, `gosec -exclude-generated ./...` | not run |
-| Vet with the e2e tag | `go vet -tags e2e ./...` | run, no findings |
+| Vet with the e2e tag | `go vet -tags e2e ./...` | 2026-11-22: run, no findings |
 | End-to-end tests | `go test -tags e2e ./tests/e2e/` against a running shop (not run by CI) | not run |
 | Faro check in a real browser | `tests/faro/run.sh` (needs the compose stack, Node and Playwright; places one real order) | not run |
-| Colour contrast | `python3 -I tools/check-contrast.py` | run, all pairs pass |
+| CSP in a real browser | `tests/faro/csp-check.mjs` against a running frontend with Faro on (`MODE=report-only` or `MODE=enforce`; Node and Playwright with Chromium, no other part of the stack) | 2026-11-22: run twice against the real handler stack on the host over in-process fakes (not the container image), both modes: all checks passed, zero violations |
+| Colour contrast | `python3 -I tools/check-contrast.py` | 2026-11-22: run, all pairs pass |
 | Proto | the `protoc` commands for the order, user, inventory and mailbox contracts are in the README sections Orders, Accounts, Live stock and Mailbox (protoc 3.21.12, protoc-gen-go 1.36.11, protoc-gen-go-grpc 1.6.1); `demo.proto` and `reviews.proto` are in `proto/`, stubs in `genproto/` | not run. Changes are additive only, server first |
+| gRPC contract (golden) | `go test ./cmd/server -run TestGRPCContract_Golden` (part of the unit tests; update on purpose with `-update-contract`) | 2026-11-22: run, passed |
 | Image | `docker build -t platform-demo/frontend:local .` | not run today |
 | Image scan | `trivy image --severity CRITICAL,HIGH --exit-code 1 platform-demo/frontend:local` | not run today |
-| Secret scan | `pre-commit run --all-files` (`.pre-commit-config.yaml`, gitleaks) or `gitleaks git --redact` | run with the gitleaks binary of the pre-commit cache (`gitleaks git --redact`, full history, 113 commits): no leaks found |
-| Workflow lint | `actionlint` | run (actionlint 1.7.12), no findings |
-| Docs | `mkdocs build --strict` (mkdocs 1.6.1 + mkdocs-techdocs-core 1.7.1, Python 3.12 venv) and the link check `python3 -I tools/check-md-links.py .` from `platform-demo-workflows` (relative links in `README.md` and `docs/`) | run, both passed |
+| Secret scan | `pre-commit run --all-files` (`.pre-commit-config.yaml`, gitleaks) or `gitleaks git --redact` | 2026-11-21: run with the gitleaks binary of the pre-commit cache (`gitleaks git --redact`, full history, 113 commits): no leaks found |
+| Workflow lint | `actionlint` | 2026-11-21: run (actionlint 1.7.12), no findings |
+| Docs | `mkdocs build --strict` (mkdocs 1.6.1 + mkdocs-techdocs-core 1.7.1, Python 3.12 venv) and the link check `python3 -I tools/check-md-links.py .` from `platform-demo-workflows` (relative links in `README.md` and `docs/`) | 2026-11-22: run, both passed (`mkdocs build --strict`, venv `~/.cache/platform-demo/techdocs-venv`; link check: 22 relative links in 16 pages, 0 broken) |
 
 ## Running locally
 

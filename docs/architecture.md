@@ -42,7 +42,7 @@ sequenceDiagram
     FE-->>B: server-rendered HTML (html/template)
 ```
 
-The middleware chain is built in `newHandler` (`cmd/server/main.go`), outermost first: OpenTelemetry HTTP handler (span named after the route template), session-id cookie, structured request log, `withUser` (the `shop_auth` cookie to `user-service.GetSession`), then the router (`gorilla/mux`) whose routes are wrapped with the Prometheus metrics middleware. Which backends each page calls, with their deadlines, is the table "Which backend each page calls" in the README.
+The middleware chain is built in `newHandler` (`cmd/server/main.go`), outermost first: OpenTelemetry HTTP handler (span named after the route template), session-id cookie, structured request log, Content-Security-Policy header, `withUser` (the `shop_auth` cookie to `user-service.GetSession`), then the router (`gorilla/mux`) whose routes are wrapped with the Prometheus metrics middleware. Which backends each page calls, with their deadlines, is the table "Which backend each page calls" in the README.
 
 ## Components
 
@@ -52,6 +52,8 @@ The middleware chain is built in `newHandler` (`cmd/server/main.go`), outermost 
 | `cmd/server/handlers.go`, `browse.go`, `cart.go`, `orders.go`, `accounts.go`, `mailbox.go`, `reviews.go`, `inventory.go`, `ads.go` | one page family each; `rpc.go` has the backend calls and their deadlines |
 | `cmd/server/errors.go` | gRPC status to error page, cached department navigation |
 | `cmd/server/currency_cache.go` | in-process cache of currency-service answers ([ADR 2](adr/0002-cache-currency-answers-in-process.md)) |
+| `cmd/server/product_cache.go` | 30 s in-process cache of `GetProduct` for cart lines and recommendations ([ADR 4](adr/0004-cache-product-lookups-instead-of-a-batch-rpc.md)); `fetchProducts` in `rpc.go` runs lookups in parallel |
+| `cmd/server/csp.go` | Content-Security-Policy header (report-only by default) and the `/csp-report` receiver ([ADR 5](adr/0005-content-security-policy-report-only-first.md)) |
 | `cmd/server/static.go` | `/static/*` with cache headers, ETag, gzip, no cookie |
 | `cmd/server/health.go` | `/healthz`, `/readyz`, `/version` and the `healthcheck` subcommand |
 | `cmd/server/telemetry.go`, `faro.go`, `internal/obs/` | metrics, spans, logs, profiles and the browser RUM settings |
@@ -64,4 +66,4 @@ None on the server. The visitor's session id is a cookie; carts live in cart-ser
 
 ## Decisions
 
-[ADR 1](adr/0001-server-rendered-html-with-htmx.md), [ADR 2](adr/0002-cache-currency-answers-in-process.md), [ADR 3](adr/0003-readiness-checks-only-the-pages-core.md).
+[ADR 1](adr/0001-server-rendered-html-with-htmx.md), [ADR 2](adr/0002-cache-currency-answers-in-process.md), [ADR 3](adr/0003-readiness-checks-only-the-pages-core.md), [ADR 4](adr/0004-cache-product-lookups-instead-of-a-batch-rpc.md), [ADR 5](adr/0005-content-security-policy-report-only-first.md).
