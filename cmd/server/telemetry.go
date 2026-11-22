@@ -42,7 +42,7 @@ var (
 )
 
 func initMetrics() {
-	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight, currencyCacheTotal, productCacheTotal)
+	prometheus.MustRegister(httpRequestsTotal, httpRequestDuration, httpRequestsInFlight, currencyCacheTotal, productCacheTotal, cspReportsTotal)
 }
 
 // spanName is the name otelhttp gives the server span when the request arrives: the method only.

@@ -202,10 +202,11 @@ func (fe *frontendServer) withUser(next http.Handler) http.Handler {
 	})
 }
 
-// isStaticPath: assets and probes never need to know who is asking.
+// isStaticPath: assets, probes and the CSP report endpoint never need to know who is asking (no session cookie,
+// no user lookup, access line at Debug) and are not pages (no policy header).
 func isStaticPath(p string) bool {
 	switch p {
-	case baseUrl + "/_healthz", baseUrl + "/healthz", baseUrl + "/readyz", baseUrl + "/version", baseUrl + "/robots.txt", baseUrl + "/favicon.ico":
+	case baseUrl + "/_healthz", baseUrl + "/healthz", baseUrl + "/readyz", baseUrl + "/version", baseUrl + "/robots.txt", baseUrl + "/favicon.ico", baseUrl + cspReportPath:
 		return true
 	}
 	return strings.HasPrefix(p, baseUrl+"/static/")
