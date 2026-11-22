@@ -1,5 +1,5 @@
 # ---- Build stage ----
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS builder
 
 # Build identity, linked into internal/obs (read by the service at start)
 ARG SERVICE_VERSION=dev
@@ -24,7 +24,7 @@ RUN go build \
     -o /bin/frontend ./cmd/server
 
 # ---- Runtime stage ----
-FROM alpine:3.24 AS runtime
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS runtime
 
 ARG SERVICE_VERSION=dev
 ARG SERVICE_COMMIT=unknown
